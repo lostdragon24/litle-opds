@@ -1,0 +1,34 @@
+<?php
+
+require_once __DIR__ . '/../config/config.php';
+require_once __DIR__ . '/../lib/Database.php';
+require_once __DIR__ . '/../lib/OpdsGenerator.php';
+
+// Базовый URL
+$baseUrl = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . 
+           "://" . $_SERVER['HTTP_HOST'] . dirname(dirname($_SERVER['SCRIPT_NAME']));
+
+$generator = new OpdsGenerator($baseUrl);
+
+try {
+    $page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
+    
+    if (isset($_GET['search']) && !empty($_GET['search'])) {
+        echo $generator->generateSearchResults($_GET['search'], $page);
+    } elseif (isset($_GET['by']) && $_GET['by'] === 'authors') {
+        echo $generator->generateByAuthors($page);
+    } elseif (isset($_GET['by']) && $_GET['by'] === 'genres') {
+        echo $generator->generateByGenres($page);
+    } elseif (isset($_GET['author']) && !empty($_GET['author'])) {
+        echo $generator->generateByAuthor($_GET['author'], $page);
+    } elseif (isset($_GET['genre']) && !empty($_GET['genre'])) {
+        echo $generator->generateByGenre($_GET['genre'], $page);
+    } else {
+        echo $generator->generateCatalog($page);
+    }
+} catch (Exception $e) {
+    header('Content-Type: text/xml; charset=utf-8');
+    echo '<?xml version="1.0" encoding="UTF-8"?>';
+    echo '<error><message>' . htmlspecialchars($e->getMessage()) . '</message></error>';
+}
+?>

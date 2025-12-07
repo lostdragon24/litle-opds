@@ -163,10 +163,10 @@ bool InpxParser::importInpxCollection(const QString &inpxFilePath, const QString
             }
 
             // Для отладки ограничим количество
-            if (lineNumber > 1000 && totalBooks > 0) {
-                qDebug() << "Reached line limit for testing, imported" << booksInFile << "books from this file";
-                break;
-            }
+          //  if (lineNumber > 1000 && totalBooks > 0) {
+          //      qDebug() << "Reached line limit for testing, imported" << booksInFile << "books from this file";
+          //      break;
+         //   }
         }
 
         processedFiles++;

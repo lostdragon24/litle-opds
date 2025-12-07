@@ -23,6 +23,16 @@ try {
         echo $generator->generateByAuthor($_GET['author'], $page);
     } elseif (isset($_GET['genre']) && !empty($_GET['genre'])) {
         echo $generator->generateByGenre($_GET['genre'], $page);
+    } elseif (isset($_GET['series']) && !empty($_GET['series'])) {
+        // Проверяем существование метода перед вызовом
+        if (method_exists($generator, 'generateBySeries')) {
+            echo $generator->generateBySeries($_GET['series'], $page);
+        } else {
+            // Fallback - показываем поиск по серии
+            header('Content-Type: application/atom+xml; charset=utf-8');
+            echo '<?xml version="1.0" encoding="UTF-8"?>';
+            echo '<error><message>Series navigation not available</message></error>';
+        }
     } else {
         echo $generator->generateCatalog($page);
     }

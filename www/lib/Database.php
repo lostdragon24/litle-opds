@@ -5,6 +5,9 @@ require_once __DIR__ . '/../config/config.php';
 class Database {
     private $pdo;
     private static $instance = null;
+    private $queryCount = 0;
+    private $cacheHits = 0;
+    private $cacheMisses = 0;
     
     private function __construct() {
         try {
@@ -12,10 +15,19 @@ class Database {
                 case 'sqlite':
                     $dsn = 'sqlite:' . Config::DB_PATH;
                     $this->pdo = new PDO($dsn);
+                    // Оптимизации для SQLite на Raspberry Pi
+                    $this->pdo->exec('PRAGMA journal_mode = WAL');
+                    $this->pdo->exec('PRAGMA synchronous = NORMAL');
+                    $this->pdo->exec('PRAGMA cache_size = -64000');
+                    $this->pdo->exec('PRAGMA temp_store = memory');
                     break;
                 case 'mysql':
-                    $dsn = 'mysql:host=' . Config::DB_HOST . ';dbname=' . Config::DB_NAME . ';charset=utf8';
-                    $this->pdo = new PDO($dsn, Config::DB_USER, Config::DB_PASS);
+                    $dsn = 'mysql:host=' . Config::DB_HOST . ';dbname=' . Config::DB_NAME . ';charset=utf8mb4';
+                    $this->pdo = new PDO($dsn, Config::DB_USER, Config::DB_PASS, [
+                        PDO::ATTR_PERSISTENT => false,
+                        PDO::ATTR_TIMEOUT => 30,
+                        PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4"
+                    ]);
                     break;
                 case 'pgsql':
                     $dsn = 'pgsql:host=' . Config::DB_HOST . ';dbname=' . Config::DB_NAME;
@@ -27,14 +39,11 @@ class Database {
             
             $this->pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
             $this->pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
-            
-            // Для SQLite включаем foreign keys
-            if (Config::DB_TYPE === 'sqlite') {
-                $this->pdo->exec('PRAGMA foreign_keys = ON');
-            }
+            $this->pdo->setAttribute(PDO::ATTR_EMULATE_PREPARES, false);
             
         } catch (PDOException $e) {
-            die('Database connection failed: ' . $e->getMessage());
+            error_log('Database connection failed: ' . $e->getMessage());
+            throw new Exception('Database connection failed: ' . $e->getMessage());
         }
     }
     
@@ -53,30 +62,112 @@ class Database {
      * Универсальный метод для выполнения запросов с параметрами
      */
     private function executeQuery($sql, $params = []) {
-        $stmt = $this->pdo->prepare($sql);
+        $this->queryCount++;
         
-        // Привязываем параметры с правильными типами
-        foreach ($params as $index => $value) {
-            $paramType = PDO::PARAM_STR;
-            if (is_int($value)) {
-                $paramType = PDO::PARAM_INT;
-            } elseif (is_bool($value)) {
-                $paramType = PDO::PARAM_BOOL;
-            } elseif (is_null($value)) {
-                $paramType = PDO::PARAM_NULL;
-            }
-            
-            $stmt->bindValue($index + 1, $value, $paramType);
+        if (Config::PERFORMANCE['enable_query_logging']) {
+            error_log("DB Query: " . $sql . " | Params: " . json_encode($params));
         }
         
-        $stmt->execute();
-        return $stmt;
+        $startTime = microtime(true);
+        
+        try {
+            $stmt = $this->pdo->prepare($sql);
+            
+            // Привязываем параметры с правильными типами
+            foreach ($params as $index => $value) {
+                $paramType = PDO::PARAM_STR;
+                if (is_int($value)) {
+                    $paramType = PDO::PARAM_INT;
+                } elseif (is_bool($value)) {
+                    $paramType = PDO::PARAM_BOOL;
+                } elseif (is_null($value)) {
+                    $paramType = PDO::PARAM_NULL;
+                }
+                
+                $stmt->bindValue($index + 1, $value, $paramType);
+            }
+            
+            $stmt->execute();
+            
+            $queryTime = microtime(true) - $startTime;
+            if ($queryTime > 1.0 && Config::PERFORMANCE['enable_query_logging']) {
+                error_log("Slow query (" . round($queryTime, 3) . "s): " . $sql);
+            }
+            
+            return $stmt;
+            
+        } catch (PDOException $e) {
+            error_log("Query failed: " . $sql . " | Error: " . $e->getMessage());
+            throw $e;
+        }
     }
     
-    // Поиск книг
-    public function searchBooks($query, $field = 'all', $page = 1, $perPage = Config::ITEMS_PER_PAGE) {
+    /**
+     * Получить количество выполненных запросов (для отладки)
+     */
+    public function getQueryCount() {
+        return $this->queryCount;
+    }
+    
+    /**
+     * Умное кэширование - только для данных, которые редко меняются
+     */
+    private function getCached($key, $type = 'default') {
+        if (!Config::ENABLE_CACHE || !Config::USE_APCU) {
+            return null;
+        }
+        
+        if (extension_loaded('apcu') && apcu_enabled()) {
+            $value = apcu_fetch($key, $success);
+            if ($success) {
+                $this->cacheHits++;
+                return $value;
+            }
+        }
+        
+        $this->cacheMisses++;
+        return null;
+    }
+    
+    private function setCached($key, $data, $type = 'default') {
+        if (!Config::ENABLE_CACHE || !Config::USE_APCU) {
+            return false;
+        }
+        
+        $config = Config::CACHE_CONFIG[$type] ?? ['ttl' => Config::CACHE_TTL];
+        $ttl = $config['ttl'];
+        
+        if (extension_loaded('apcu') && apcu_enabled()) {
+            return apcu_store($key, $data, $ttl);
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Получить статистику кэширования
+     */
+    public function getCacheStats() {
+        return [
+            'hits' => $this->cacheHits,
+            'misses' => $this->cacheMisses,
+            'effectiveness' => ($this->cacheHits + $this->cacheMisses) > 0 ? 
+                round($this->cacheHits / ($this->cacheHits + $this->cacheMisses) * 100, 1) : 0
+        ];
+    }
+    
+    // === ОСНОВНЫЕ МЕТОДЫ ДОСТУПА К ДАННЫМ ===
+    
+    /**
+     * Поиск книг - оптимизированная версия
+     */
+    public function searchBooks($query, $field = 'all', $page = 1, $perPage = null) {
+        if ($perPage === null) {
+            $perPage = Config::ITEMS_PER_PAGE;
+        }
+        
         $offset = (int)(($page - 1) * $perPage);
-        $perPage = (int)$perPage;
+        $perPage = min((int)$perPage, 100);
         $params = [];
         
         $sql = "SELECT * FROM books WHERE 1=1";
@@ -118,15 +209,19 @@ class Database {
         return $stmt->fetchAll();
     }
     
-    // Получить книгу по ID
+    /**
+     * Получить книгу по ID
+     */
     public function getBook($id) {
         $stmt = $this->executeQuery("SELECT * FROM books WHERE id = ?", [$id]);
         return $stmt->fetch();
     }
     
-    // Получить последние добавленные книги (с пагинацией)
+    /**
+     * Получить последние добавленные книги
+     */
     public function getRecentBooks($limit = 10, $offset = 0) {
-        $limit = (int)$limit;
+        $limit = min((int)$limit, 100);
         $offset = (int)$offset;
         
         $sql = "SELECT * FROM books ORDER BY added_date DESC LIMIT ? OFFSET ?";
@@ -134,7 +229,9 @@ class Database {
         return $stmt->fetchAll();
     }
     
-    // Получить количество книг для поиска
+    /**
+     * Получить количество книг для поиска
+     */
     public function getSearchCount($query, $field = 'all') {
         $params = [];
         $sql = "SELECT COUNT(*) as count FROM books WHERE 1=1";
@@ -170,29 +267,42 @@ class Database {
         
         $stmt = $this->executeQuery($sql, $params);
         $result = $stmt->fetch();
-        return $result['count'];
+        $count = $result['count'];
+        
+        $maxCount = Config::PERFORMANCE['max_search_results'];
+        if ($count > $maxCount) {
+            $count = $maxCount;
+        }
+        
+        return $count;
     }
     
-    // Получить все авторы
+    /**
+     * Получить все авторы
+     */
     public function getAuthors() {
         $stmt = $this->executeQuery(
-            "SELECT DISTINCT author FROM books WHERE author IS NOT NULL AND author != '' ORDER BY author"
+            "SELECT DISTINCT author FROM books WHERE author IS NOT NULL AND author != '' ORDER BY author LIMIT 5000"
         );
         return $stmt->fetchAll();
     }
     
-    // Получить все жанры
+    /**
+     * Получить все жанры
+     */
     public function getGenres() {
         $stmt = $this->executeQuery(
-            "SELECT DISTINCT genre FROM books WHERE genre IS NOT NULL AND genre != '' ORDER BY genre"
+            "SELECT DISTINCT genre FROM books WHERE genre IS NOT NULL AND genre != '' ORDER BY genre LIMIT 1000"
         );
         return $stmt->fetchAll();
     }
     
-    // Получить все серии
+    /**
+     * Получить все серии
+     */
     public function getSeries() {
         $stmt = $this->executeQuery(
-            "SELECT DISTINCT series FROM books WHERE series IS NOT NULL AND series != '' ORDER BY series"
+            "SELECT DISTINCT series FROM books WHERE series IS NOT NULL AND series != '' ORDER BY series LIMIT 5000"
         );
         return $stmt->fetchAll();
     }
@@ -241,6 +351,7 @@ class Database {
             WHERE file_type IS NOT NULL 
             GROUP BY file_type 
             ORDER BY count DESC
+            LIMIT 10
         ");
         $stats['file_types'] = $stmt->fetchAll();
         
@@ -253,25 +364,21 @@ class Database {
     }
     
     /**
-     * Преобразовать жанр FB2 в читаемое название используя маппинг из config.php
+     * Преобразовать жанр FB2 в читаемое название
      */
     public function getReadableGenre($genre) {
         if (empty($genre)) {
             return null;
         }
         
-        // Если жанр уже на русском, возвращаем как есть
         if (in_array($genre, array_values(Config::FB2_GENRES))) {
             return $genre;
         }
         
-        // Ищем в маппинге FB2 жанров из config.php
         if (isset(Config::FB2_GENRES[$genre])) {
             return Config::FB2_GENRES[$genre];
         }
         
-        // Если не нашли в маппинге, возвращаем оригинальное название
-        // с первой заглавной буквой и заменой подчеркиваний на пробелы
         return ucfirst(str_replace('_', ' ', $genre));
     }
     
@@ -285,10 +392,10 @@ class Database {
             WHERE genre IS NOT NULL AND genre != '' 
             GROUP BY genre 
             ORDER BY count DESC, genre
+            LIMIT 100
         ");
         $genres = $stmt->fetchAll();
         
-        // Преобразуем названия жанров через маппинг из config.php
         foreach ($genres as &$genre) {
             $genre['readable_name'] = $this->getReadableGenre($genre['genre']);
         }
@@ -300,7 +407,7 @@ class Database {
      * Получить топ авторов
      */
     public function getTopAuthors($limit = 20) {
-        $limit = (int)$limit;
+        $limit = min((int)$limit, 100);
         
         $stmt = $this->executeQuery("
             SELECT author, COUNT(*) as count 
@@ -317,7 +424,7 @@ class Database {
      * Получить топ серий
      */
     public function getTopSeries($limit = 20) {
-        $limit = (int)$limit;
+        $limit = min((int)$limit, 100);
         
         $stmt = $this->executeQuery("
             SELECT series, COUNT(*) as count 
@@ -335,7 +442,7 @@ class Database {
      */
     public function getBooksByAuthor($author, $page = 1, $perPage = 20) {
         $offset = (int)(($page - 1) * $perPage);
-        $perPage = (int)$perPage;
+        $perPage = min((int)$perPage, 100);
         
         $stmt = $this->executeQuery("
             SELECT * FROM books 
@@ -360,7 +467,7 @@ class Database {
      */
     public function getBooksByGenre($genre, $page = 1, $perPage = 20) {
         $offset = (int)(($page - 1) * $perPage);
-        $perPage = (int)$perPage;
+        $perPage = min((int)$perPage, 100);
         
         $stmt = $this->executeQuery("
             SELECT * FROM books 
@@ -381,38 +488,16 @@ class Database {
     }
     
     /**
-     * Получить книги по серии с пагинацией
-     */
-    public function getBooksBySeries($series, $page = 1, $perPage = 20) {
-        $offset = (int)(($page - 1) * $perPage);
-        $perPage = (int)$perPage;
-        
-        $stmt = $this->executeQuery("
-            SELECT * FROM books 
-            WHERE series = ? 
-            ORDER BY series_number, title
-            LIMIT ? OFFSET ?
-        ", [$series, $perPage, $offset]);
-        return $stmt->fetchAll();
-    }
-    
-    /**
-     * Получить количество книг по серии
-     */
-    public function getBooksCountBySeries($series) {
-        $stmt = $this->executeQuery("SELECT COUNT(*) as count FROM books WHERE series = ?", [$series]);
-        $result = $stmt->fetch();
-        return $result['count'];
-    }
-    
-    /**
      * Получить случайные книги
      */
     public function getRandomBooks($limit = 10) {
-        $limit = (int)$limit;
+        $limit = min((int)$limit, 50);
         
-        // Для MySQL используем RAND(), для SQLite - RANDOM()
-        $randomFunc = Config::DB_TYPE === 'mysql' ? 'RAND()' : 'RANDOM()';
+        if (Config::DB_TYPE === 'mysql') {
+            $randomFunc = 'RAND()';
+        } else {
+            $randomFunc = 'RANDOM()';
+        }
         
         $stmt = $this->executeQuery("
             SELECT * FROM books 
@@ -423,171 +508,7 @@ class Database {
     }
     
     /**
-     * Получить книги, добавленные за последние N дней
-     */
-    public function getRecentBooksByDays($days = 5) {
-        $days = (int)$days;
-        
-        // Для разных СУБД разный синтаксис дат
-        if (Config::DB_TYPE === 'mysql') {
-            $stmt = $this->executeQuery("
-                SELECT * FROM books 
-                WHERE added_date >= DATE_SUB(NOW(), INTERVAL ? DAY) 
-                ORDER BY added_date DESC
-            ", [$days]);
-        } else {
-            $stmt = $this->executeQuery("
-                SELECT * FROM books 
-                WHERE added_date >= datetime('now', '-? days') 
-                ORDER BY added_date DESC
-            ", [$days]);
-        }
-        
-        return $stmt->fetchAll();
-    }
-    
-    /**
-     * Поиск по нескольким полям с пагинацией
-     */
-    public function advancedSearch($conditions, $page = 1, $perPage = Config::ITEMS_PER_PAGE) {
-        $offset = (int)(($page - 1) * $perPage);
-        $perPage = (int)$perPage;
-        $params = [];
-        $sql = "SELECT * FROM books WHERE 1=1";
-        
-        if (!empty($conditions['title'])) {
-            $sql .= " AND title LIKE ?";
-            $params[] = "%{$conditions['title']}%";
-        }
-        
-        if (!empty($conditions['author'])) {
-            $sql .= " AND author LIKE ?";
-            $params[] = "%{$conditions['author']}%";
-        }
-        
-        if (!empty($conditions['genre'])) {
-            $sql .= " AND genre LIKE ?";
-            $params[] = "%{$conditions['genre']}%";
-        }
-        
-        if (!empty($conditions['series'])) {
-            $sql .= " AND series LIKE ?";
-            $params[] = "%{$conditions['series']}%";
-        }
-        
-        if (!empty($conditions['year_from'])) {
-            $sql .= " AND year >= ?";
-            $params[] = $conditions['year_from'];
-        }
-        
-        if (!empty($conditions['year_to'])) {
-            $sql .= " AND year <= ?";
-            $params[] = $conditions['year_to'];
-        }
-        
-        if (!empty($conditions['language'])) {
-            $sql .= " AND language = ?";
-            $params[] = $conditions['language'];
-        }
-        
-        $sql .= " ORDER BY author, title LIMIT ? OFFSET ?";
-        $params[] = $perPage;
-        $params[] = $offset;
-        
-        $stmt = $this->executeQuery($sql, $params);
-        return $stmt->fetchAll();
-    }
-    
-    /**
-     * Получить количество для расширенного поиска
-     */
-    public function getAdvancedSearchCount($conditions) {
-        $params = [];
-        $sql = "SELECT COUNT(*) as count FROM books WHERE 1=1";
-        
-        if (!empty($conditions['title'])) {
-            $sql .= " AND title LIKE ?";
-            $params[] = "%{$conditions['title']}%";
-        }
-        
-        if (!empty($conditions['author'])) {
-            $sql .= " AND author LIKE ?";
-            $params[] = "%{$conditions['author']}%";
-        }
-        
-        if (!empty($conditions['genre'])) {
-            $sql .= " AND genre LIKE ?";
-            $params[] = "%{$conditions['genre']}%";
-        }
-        
-        if (!empty($conditions['series'])) {
-            $sql .= " AND series LIKE ?";
-            $params[] = "%{$conditions['series']}%";
-        }
-        
-        if (!empty($conditions['year_from'])) {
-            $sql .= " AND year >= ?";
-            $params[] = $conditions['year_from'];
-        }
-        
-        if (!empty($conditions['year_to'])) {
-            $sql .= " AND year <= ?";
-            $params[] = $conditions['year_to'];
-        }
-        
-        if (!empty($conditions['language'])) {
-            $sql .= " AND language = ?";
-            $params[] = $conditions['language'];
-        }
-        
-        $stmt = $this->executeQuery($sql, $params);
-        $result = $stmt->fetch();
-        return $result['count'];
-    }
-    
-    /**
-     * Обновить информацию о книге
-     */
-    public function updateBook($id, $data) {
-        $allowedFields = ['title', 'author', 'genre', 'series', 'series_number', 'year', 'language', 'publisher', 'description'];
-        $setParts = [];
-        $params = [];
-        
-        foreach ($allowedFields as $field) {
-            if (isset($data[$field])) {
-                $setParts[] = "$field = ?";
-                $params[] = $data[$field];
-            }
-        }
-        
-        if (empty($setParts)) {
-            return false;
-        }
-        
-        // Для разных СУБД разный синтаксис временных меток
-        if (Config::DB_TYPE === 'mysql') {
-            $setParts[] = "last_modified = NOW()";
-        } else {
-            $setParts[] = "last_modified = CURRENT_TIMESTAMP";
-        }
-        
-        $sql = "UPDATE books SET " . implode(', ', $setParts) . " WHERE id = ?";
-        $params[] = $id;
-        
-        $stmt = $this->executeQuery($sql, $params);
-        return $stmt->rowCount() > 0;
-    }
-    
-    /**
-     * Удалить книгу
-     */
-    public function deleteBook($id) {
-        $stmt = $this->executeQuery("DELETE FROM books WHERE id = ?", [$id]);
-        return $stmt->rowCount() > 0;
-    }
-    
-    /**
-     * Проверить существование книги по различным критериям
+     * Проверить существование книги
      */
     public function bookExists($filePath, $archivePath = null, $internalPath = null) {
         $sql = "SELECT id FROM books WHERE file_path = ?";
@@ -607,12 +528,14 @@ class Database {
             $sql .= " AND archive_internal_path IS NULL";
         }
         
+        $sql .= " LIMIT 1";
+        
         $stmt = $this->executeQuery($sql, $params);
         return $stmt->fetch() !== false;
     }
     
     /**
-     * Получить общее количество книг (для пагинации)
+     * Получить общее количество книг
      */
     public function getTotalBooksCount() {
         $stmt = $this->executeQuery("SELECT COUNT(*) as count FROM books");
@@ -621,13 +544,12 @@ class Database {
     }
     
     /**
-     * Получить книги с расширенной пагинацией
+     * Получить книги с пагинацией
      */
     public function getBooksWithPagination($page = 1, $perPage = 20, $orderBy = 'added_date', $orderDir = 'DESC') {
         $offset = (int)(($page - 1) * $perPage);
-        $perPage = (int)$perPage;
+        $perPage = min((int)$perPage, 100);
         
-        // Валидация параметров сортировки
         $allowedOrders = ['added_date', 'title', 'author', 'year'];
         $allowedDirs = ['ASC', 'DESC'];
         
@@ -642,39 +564,44 @@ class Database {
         return $stmt->fetchAll();
     }
     
-    /**
-     * Получить читаемое название жанра для книги (удобный метод для шаблонов)
-     */
-    public function getBookReadableGenre($bookId) {
-        $book = $this->getBook($bookId);
-        if ($book && $book['genre']) {
-            return $this->getReadableGenre($book['genre']);
-        }
-        return null;
-    }
+
+public function getBooksBySeries($series, $page = 1, $perPage = 20) {
+    $offset = (int)(($page - 1) * $perPage);
+    $perPage = min((int)$perPage, 100);
     
+    $stmt = $this->executeQuery("
+        SELECT * FROM books 
+        WHERE series = ? 
+        ORDER BY series_number, title
+        LIMIT ? OFFSET ?
+    ", [$series, $perPage, $offset]);
+    return $stmt->fetchAll();
+}
+
+
+/**
+ * Получить количество книг по серии
+ */
+public function getBooksCountBySeries($series) {
+    $stmt = $this->executeQuery("SELECT COUNT(*) as count FROM books WHERE series = ?", [$series]);
+    $result = $stmt->fetch();
+    return $result['count'];
+}
+
+
     /**
-     * Поиск по читаемым названиям жанров
+     * Очистить кэш (для админки)
      */
-    public function searchByReadableGenre($readableGenre) {
-        // Ищем обратное преобразование - из русского названия в код
-        $genreCode = array_search($readableGenre, Config::FB2_GENRES);
-        if ($genreCode !== false) {
-            return $this->getBooksByGenre($genreCode, 1, 100);
+    public function clearCache() {
+        if (extension_loaded('apcu') && apcu_enabled()) {
+            apcu_clear_cache();
+            $this->cacheHits = 0;
+            $this->cacheMisses = 0;
         }
-        
-        // Если не нашли, ищем по частичному совпадению
-        $stmt = $this->executeQuery("
-            SELECT b.* 
-            FROM books b 
-            WHERE b.genre IN (
-                SELECT genre FROM books 
-                WHERE genre LIKE ? 
-                GROUP BY genre
-            )
-            ORDER BY b.author, b.title
-            LIMIT 100
-        ", ["%$readableGenre%"]);
-        return $stmt->fetchAll();
+        return true;
     }
 }
+
+// Сохраняем счетчик запросов в глобальную переменную для футера
+$GLOBALS['query_count'] = 0;
+?>

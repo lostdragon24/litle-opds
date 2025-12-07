@@ -2,31 +2,86 @@
 
 class Config {
     // Настройки базы данных
-    const DB_TYPE =  'mysql'; // или 'mysql', 'pgsql'
+    const DB_TYPE =  'mysql'; // или 'mysql', 'sqlite'
     const DB_PATH = '/path/to/db/library.db';
     const DB_HOST = 'localhost';
-    const DB_USER = 'opds';
-    const DB_PASS = 'password
+    const DB_USER = 'userDB';
+    const DB_PASS = 'passwordUserDB';
     const DB_NAME = 'mybook';
     
     // Настройки сканера
-    const BOOKS_DIR = '/mnt/sda1/book/_Lib.rus.ec - Официальная/lib.rus.ec/';
-    const SCANNER_PATH = __DIR__ . '/home/pi/opds2/';
+    const BOOKS_DIR = '/path/to.collection/books/';
+    const SCANNER_PATH = __DIR__ . '/scanner/path/';
     const SCANNER_CONFIG = __DIR__ . '/config.ini';
     
     // Настройки веб-интерфейса
     const SITE_TITLE = 'Моя домашняя библиотека';
-    const ITEMS_PER_PAGE = 20;
-//    const CACHE_DIR = __DIR__ . '/home/pi/opds2/cache';
-//    const COVER_CACHE_DIR = __DIR__ . '/home/pi/opds2/covers';
-    const CACHE_DIR = '/var/www/html/4/cache';  // Изменяем путь
-    const COVER_CACHE_DIR = '/var/www/html/4/cache/covers';  // Изменяем путь
+    const ITEMS_PER_PAGE = 10;
+    const CACHE_DIR = '/path/to/dir/cache';
+    const COVER_CACHE_DIR = '/path/to/cache/dir/covers';
     
     // Настройки OPDS
     const OPDS_TITLE = 'Моя библиотека';
     const OPDS_AUTHOR = 'Book Scanner';
     const OPDS_ID = 'urn:uuid:your-uuid-here';
     
+    // === ОПТИМИЗАЦИИ ДЛЯ RASPBERRY PI ===
+    
+    // Настройки кэширования - ВРЕМЕННО ОТКЛЮЧЕНО из-за проблем с обложками
+    const ENABLE_CACHE = true; // Временно отключено
+    const CACHE_TTL = 3600;
+    
+    // Использование APCu для опкода и данных
+    const USE_APCU = true; // Временно отключено
+    const APCU_TTL = 1800;
+    
+    // Использование Memcached для распределенного кэша
+    const USE_MEMCACHED = true; // Временно отключено
+    const MEMCACHED_HOST = 'localhost';
+    const MEMCACHED_PORT = 11211;
+    const MEMCACHED_TTL = 7200;
+    
+    // Уровни кэширования
+    const CACHE_LEVEL_APCU = 'apcu';
+    const CACHE_LEVEL_MEMCACHED = 'memcached';
+    const CACHE_LEVEL_FILE = 'file';
+    
+    // Настройки для разных типов данных (когда кэширование будет включено)
+    const CACHE_CONFIG = [
+        'search_results' => ['level' => self::CACHE_LEVEL_MEMCACHED, 'ttl' => 1800],
+        'book_data' => ['level' => self::CACHE_LEVEL_APCU, 'ttl' => 3600],
+        'statistics' => ['level' => self::CACHE_LEVEL_APCU, 'ttl' => 3600],
+        'opds_feeds' => ['level' => self::CACHE_LEVEL_MEMCACHED, 'ttl' => 900],
+    ];
+    
+    // Ограничения для обработки обложек
+    const COVER_PROCESSING = [
+        'max_width' => 800,
+        'max_height' => 1200, 
+        'quality' => 85,
+        'max_processing_time' => 10, // секунд
+        'skip_large_archives' => true,
+        'max_archive_size' => 50 * 1024 * 1024, // 50MB
+        'enable_file_cache' => true, // Файловый кэш для обложек
+        'cache_ttl' => 86400 // 24 часа
+    ];
+    
+    // Оптимизации производительности для Raspberry Pi
+    const PERFORMANCE = [
+        'max_search_results' => 1000, // Ограничить результаты поиска
+        'enable_query_logging' => false, // Логирование запросов (только для отладки)
+        'batch_processing' => true, // Пакетная обработка
+        'optimize_images' => true, // Оптимизация изображений
+        'memory_limit' => '128M', // Лимит памяти для PHP
+    ];
+    
+    // Настройки пагинации
+    const PAGINATION = [
+        'max_pages' => 100, // Максимальное количество страниц
+        'default_per_page' => 20,
+        'large_results_threshold' => 1000, // Порог для больших результатов
+    ];
+
     public static function init() {
         // Создаем необходимые директории
         if (!file_exists(self::CACHE_DIR)) {
@@ -34,6 +89,16 @@ class Config {
         }
         if (!file_exists(self::COVER_CACHE_DIR)) {
             mkdir(self::COVER_CACHE_DIR, 0755, true);
+        }
+        
+        // Устанавливаем лимит памяти
+        if (self::PERFORMANCE['memory_limit']) {
+            ini_set('memory_limit', self::PERFORMANCE['memory_limit']);
+        }
+        
+        // Настройки для оптимизации производительности
+        if (self::PERFORMANCE['optimize_images']) {
+            ini_set('gd.jpeg_ignore_warning', 1);
         }
         
         // Создаем конфиг для сканера если его нет
@@ -62,8 +127,8 @@ class Config {
         file_put_contents(self::SCANNER_CONFIG, $config_content);
     }
 
-
-const FB2_GENRES = [
+    // Маппинг жанров FB2 (остается без изменений)
+    const FB2_GENRES = [
         // Фантастика
         'sf_history' => 'Альтернативная история',
         'sf_action' => 'Боевая фантастика',

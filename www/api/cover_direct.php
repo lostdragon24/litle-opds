@@ -19,22 +19,36 @@ if (!$book) {
     exit;
 }
 
-// Извлекаем обложку напрямую из книги
+// ПРОСТОЙ ВАРИАНТ БЕЗ КЭШИРОВАНИЯ В ПАМЯТИ
+$coverPath = Config::COVER_CACHE_DIR . '/' . $id . ($thumb ? '_thumb.jpg' : '.jpg');
+
+// Если есть файловый кэш - используем его
+if (file_exists($coverPath)) {
+    header('Content-Type: image/jpeg');
+    header('Cache-Control: public, max-age=86400');
+    readfile($coverPath);
+    exit;
+}
+
+// Иначе извлекаем обложку
 $imageData = extractBookCover($book);
 if ($imageData === false) {
     serveDefaultCover($thumb);
     exit;
 }
 
-// Отдаем обложку напрямую (без кэширования)
-header('Content-Type: image/jpeg');
-header('Cache-Control: no-cache, must-revalidate');
-
-if ($thumb) {
-    // Создаем миниатюру на лету
-    echo createThumbnailFromData($imageData, 200, 300);
+// Сохраняем в файловый кэш и отдаем
+if (saveCoverToCache($imageData, $id, $thumb)) {
+    header('Content-Type: image/jpeg');
+    header('Cache-Control: public, max-age=86400');
+    
+    if ($thumb) {
+        echo createThumbnailFromData($imageData, 200, 300);
+    } else {
+        echo $imageData;
+    }
 } else {
-    echo $imageData;
+    serveDefaultCover($thumb);
 }
 
 /**
@@ -51,7 +65,6 @@ function extractBookCover($book) {
         return Fb2CoverParser::findCover($content);
     }
     
-    // Для других форматов можно добавить парсеры
     return false;
 }
 
@@ -70,6 +83,24 @@ function getBookContent($book) {
         return @file_get_contents($book['file_path']);
     }
     return false;
+}
+
+/**
+ * Сохранить в файловый кэш
+ */
+function saveCoverToCache($imageData, $id, $thumb) {
+    if (!file_exists(Config::COVER_CACHE_DIR)) {
+        mkdir(Config::COVER_CACHE_DIR, 0755, true);
+    }
+    
+    $path = Config::COVER_CACHE_DIR . '/' . $id . ($thumb ? '_thumb.jpg' : '.jpg');
+    
+    if ($thumb) {
+        $thumbData = createThumbnailFromData($imageData, 200, 300);
+        return $thumbData ? file_put_contents($path, $thumbData) !== false : false;
+    } else {
+        return file_put_contents($path, $imageData) !== false;
+    }
 }
 
 /**
@@ -113,7 +144,6 @@ function createThumbnailFromData($imageData, $maxWidth, $maxHeight) {
     
     imagecopyresampled($thumb, $source, 0, 0, 0, 0, $newWidth, $newHeight, $width, $height);
     
-    // Сохраняем в память
     ob_start();
     imagejpeg($thumb, null, 85);
     $thumbData = ob_get_clean();
@@ -147,7 +177,7 @@ function serveDefaultCover($thumb) {
     imagestring($image, $fontSize, $x, $y, $text, $textColor);
     
     header('Content-Type: image/jpeg');
-    header('Cache-Control: no-cache');
+    header('Cache-Control: public, max-age=3600');
     imagejpeg($image);
     imagedestroy($image);
     exit;

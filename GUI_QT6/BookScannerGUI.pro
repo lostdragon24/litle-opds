@@ -41,9 +41,9 @@ unix {
 
 # Для MySQL
 unix {
-    LIBS += -lmysqlclient
+    LIBS += -lmariadb
     # Или для MySQL:
-    # LIBS += -lmariadb
+    # LIBS += -lmysqlclient
 }
 
 # Для OpenSSL (хеширование)

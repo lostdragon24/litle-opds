@@ -6,8 +6,8 @@
 set -euo pipefail
 
 # === Настройки ===
-DB_PATH="${OPDS_DB_PATH:-/home/alex/book_scanner/library.db}"
-LOG_FILE="/home/pi/opds2/create_indexes.log"
+DB_PATH="${OPDS_DB_PATH:-library.db}"
+LOG_FILE="create_indexes.log"
 
 # Создаём лог-директорию, если нужно
 mkdir -p "$(dirname "$LOG_FILE")"

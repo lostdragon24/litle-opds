@@ -311,3 +311,197 @@ function handleCoverError(img, height = 400) {
 }
 
 </script>
+
+<script>
+(async function() {
+    // Функция получения fingerprint
+    async function getFingerprint() {
+        // Собираем стабильные данные
+        const data = {
+            // Разрешение экрана (обычно не меняется)
+            screen: screen.width + 'x' + screen.height + 'x' + screen.colorDepth,
+            // Язык системы
+            language: navigator.language,
+            // Платформа (Windows/Linux/Mac)
+            platform: navigator.platform,
+            // User Agent (браузер + ОС)
+            // userAgent: navigator.userAgent,
+            // Часовой пояс
+            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+            // Количество ядер CPU
+            cpuCores: navigator.hardwareConcurrency || 0,
+            // Объём RAM (если доступно)
+            memory: navigator.deviceMemory || 0,
+            // Сенсорный экран?
+            touchPoints: navigator.maxTouchPoints || 0,
+
+            // Аудио-фингерпринтинг
+            //audio: await getAudioFingerprint(),
+            // Canvas-фингерпринтинг
+            //canvas: await getCanvasFingerprint(),
+            // WebGL-фингерпринтинг
+            //webgl: await getWebGLFingerprint(),
+
+    	    audio: await withTimeout(getAudioFingerprint(), 2000, 'audio_timeout'),
+    	    canvas: await withTimeout(getCanvasFingerprint(), 1000, 'canvas_timeout'),
+    	    webgl: await withTimeout(getWebGLFingerprint(), 1000, null),
+
+
+
+        };
+        
+        const str = JSON.stringify(data);
+	const hash = await cryptoHash(str);
+    
+	return 'fp_' + hash.slice(0, 32); // Первые 32 символа = 128 бит
+    }
+    
+    // Получаем или создаём fingerprint
+    let fingerprint = localStorage.getItem('device_fingerprint');
+    
+    if (!fingerprint) {
+        fingerprint = await getFingerprint();
+        localStorage.setItem('device_fingerprint', fingerprint);
+        console.log('New device fingerprint created:', fingerprint);
+    } else {
+        console.log('Existing device fingerprint:', fingerprint);
+    }
+
+    // Сохраняем в куку для PHP
+    document.cookie = 'device_fp=' + fingerprint + '; path=/; max-age=' + (365 * 24 * 3600 * 10);
+})();
+
+function withTimeout(promise, ms, fallback) {
+    return Promise.race([
+        promise,
+        new Promise(resolve => 
+            setTimeout(() => resolve(fallback), ms)
+        )
+    ]).catch(() => fallback);
+}
+
+async function cryptoHash(str) {
+  // 1. Превращаем строку в массив байт (Uint8Array)
+  const encoder = new TextEncoder();
+  const data = encoder.encode(str);
+  
+  // 2. Хешируем с помощью Web Crypto API
+  const hashBuffer = await window.crypto.subtle.digest('SHA-256', data);
+  
+  // 3. Превращаем ArrayBuffer обратно в байты
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  
+  // 4. Конвертируем каждый байт в шестнадцатеричную строку и объединяем
+  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  
+  return hashHex;
+}
+
+
+
+// Canvas fingerprinting
+async function getCanvasFingerprint() {
+    return new Promise((resolve) => {
+        try {
+            const canvas = document.createElement('canvas');
+            canvas.width = 200; canvas.height = 50;
+            const ctx = canvas.getContext('2d');
+            
+            // Рисуем уникальный паттерн
+            ctx.font = '18pt Arial';
+            ctx.textBaseline = 'top';
+            ctx.fillStyle = '#f60';
+            ctx.fillRect(0, 0, 200, 50);
+            ctx.fillStyle = '#069';
+            ctx.fillText('FingerprintTest', 2, 35);
+            ctx.fillStyle = 'rgba(102, 204, 0, 0.7)';
+            ctx.fillText('CanvasTest', 4, 45);
+            
+            // Возвращаем хеш изображения
+            resolve(canvas.toDataURL().slice(-64));
+        } catch (e) {
+            resolve('canvas_error');
+        }
+    });
+}
+
+// WebGL fingerprinting
+async function getWebGLFingerprint() {
+    try {
+        const canvas = document.createElement('canvas');
+        const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+        if (!gl) return null;
+        
+        const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+        if (debugInfo) {
+            return {
+                vendor: gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL),
+                renderer: gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL)
+            };
+        }
+        return null;
+    } catch (e) {
+        return null;
+    }
+}
+
+
+async function getAudioFingerprint() {
+  return new Promise((resolve) => {
+    try {
+      // 1. Создаем контекст для скрытого рендеринга аудио в памяти
+      // Параметры: 1 канал, длина 44100 фреймов, частота 44100 Гц
+      const AudioContext = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+      if (!AudioContext) {
+        return resolve("not_supported");
+      }
+      
+      const context = new AudioContext(1, 44100, 44100);
+
+      // 2. Создаем источник звука — осциллятор (генератор волн)
+      const oscillator = context.createOscillator();
+      oscillator.type = "triangle"; // Треугольная форма волны создает много гармоник
+      oscillator.frequency.setValueAtTime(10000, context.currentTime); // Высокая частота 10 кГц
+
+      // 3. Создаем компрессор (сжимает динамический диапазон)
+      // Именно здесь происходит основная масса математических округлений
+      const compressor = context.createDynamicsCompressor();
+      compressor.threshold.setValueAtTime(-50, context.currentTime);
+      compressor.knee.setValueAtTime(40, context.currentTime);
+      compressor.ratio.setValueAtTime(12, context.currentTime);
+      compressor.attack.setValueAtTime(0, context.currentTime);
+      compressor.release.setValueAtTime(0.25, context.currentTime);
+
+      // 4. Соединяем узлы в аудио-граф
+      // Осциллятор -> Компрессор -> Виртуальный выход
+      oscillator.connect(compressor);
+      compressor.connect(context.destination);
+
+      // 5. Запускаем генерацию звука
+      oscillator.start(0);
+
+      // 6. Рендерим аудио-поток
+      context.startRendering().then((renderedBuffer) => {
+        // Извлекаем массив амплитуд (числа с плавающей запятой Float32)
+        const audioData = renderedBuffer.getChannelData(0);
+        
+        // Считаем контрольную сумму (хэш) по подвыборке данных для стабильности
+        let hash = 0;
+        // Берем значения с шагом, чтобы отсечь незначительный шум, или суммируем определенный кусок
+        for (let i = 4000; i < 4500; i++) {
+          hash += Math.abs(audioData[i]);
+        }
+        
+        // Возвращаем строковое представление полученного числа
+        resolve(hash.toString());
+      }).catch(() => {
+        resolve("rendering_error");
+      });
+      
+    } catch (e) {
+      resolve("error_" + e.message);
+    }
+  });
+}
+
+</script>

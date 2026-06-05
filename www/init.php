@@ -19,6 +19,17 @@ if ($isAdmin) {
     session_name('USER_SESSION');
 }
 
+
+// Определяем идентификатор устройства
+if (isset($_COOKIE['device_fp'])) {
+    $deviceId = $_COOKIE['device_fp'];
+} else {
+    $deviceId = $_SERVER['REMOTE_ADDR'];
+}
+define('DEVICE_ID', $deviceId);
+
+
+
 SessionManager::start();
 
 require_once LOPDS_ROOT . '/lib/SecurityHelper.php';

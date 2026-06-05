@@ -53,7 +53,6 @@
 #include <QAbstractSocket>
 #include <QStandardPaths>
 #include <QDir>
-#include <QElapsedTimer>
 
 constexpr int PlaceholderRole = Qt::UserRole + 100;
 

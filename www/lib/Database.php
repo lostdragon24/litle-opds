@@ -44,6 +44,7 @@ class Database
                     $this->pdo = new PDO($dsn);
                     $this->pdo->exec('PRAGMA journal_mode = WAL');
                     $this->pdo->exec('PRAGMA synchronous = NORMAL');
+		    $this->pdo->exec('PRAGMA cache = shared');
                     $this->pdo->exec('PRAGMA cache_size = -64000');
                     $this->pdo->exec('PRAGMA temp_store = memory');
                     $this->pdo->exec('PRAGMA mmap_size = 268435456');
@@ -857,7 +858,7 @@ public function rateBook($bookId, $rating, $userIp, $csrfToken = null)
     }
 
     $rating = max(1, min(5, (int)$rating));
-    $userIp = $this->sanitizeIp($userIp);
+    //$userIp = $this->sanitizeIp($userIp);
     $bookId = (int)$bookId;
 
     try {
@@ -914,66 +915,6 @@ public function rateBook($bookId, $rating, $userIp, $csrfToken = null)
     }
 }
 
-
-   /**
-     * Получить топ книг по рейтингу (оптимизированная версия).
-     */
-    public function getTopRatedBooks($limit = 100, $minVotes = 1)
-    {
-        $cacheKey = 'top_rated_optimized_'.$limit.'_'.$minVotes;
-
-        $cached = Cache::get($cacheKey, 'statistics');
-        if (null !== $cached) {
-            ++$this->cacheHits;
-
-            return $cached;
-        }
-        ++$this->cacheMisses;
-
-        $dbType = Config::getDbType();
-
-
-        if ($dbType === 'mysql') {
-            // MySQL оптимизация с подзапросом и использованием индексов
-            $sql = 'SELECT b.id, b.title, b.author, b.series, b.series_number,
-                           b.genre, b.file_type, b.added_date,
-                           COALESCE(r_stats.avg_rating, 0) as avg_rating,
-                           COALESCE(r_stats.votes_count, 0) as votes_count
-                    FROM books b
-                    STRAIGHT_JOIN (
-                        SELECT book_id, AVG(rating) as avg_rating, COUNT(*) as votes_count
-                        FROM book_ratings
-                        GROUP BY book_id
-                        HAVING COUNT(*) >= ?
-                    ) r_stats ON b.id = r_stats.book_id
-                    ORDER BY r_stats.avg_rating DESC, r_stats.votes_count DESC, b.title
-                    LIMIT ?';
-        } else {
-            // SQLite оптимизация
-            $sql = 'SELECT b.id, b.title, b.author, b.series, b.series_number,
-                           b.genre, b.file_type, b.added_date,
-                           IFNULL(r_stats.avg_rating, 0) as avg_rating,
-                           IFNULL(r_stats.votes_count, 0) as votes_count
-                    FROM books b
-                    LEFT JOIN (
-                        SELECT book_id, AVG(rating) as avg_rating, COUNT(*) as votes_count
-                        FROM book_ratings
-                        GROUP BY book_id
-                    ) r_stats ON b.id = r_stats.book_id
-                    WHERE r_stats.votes_count >= ?
-                    ORDER BY r_stats.avg_rating DESC, r_stats.votes_count DESC, b.title
-                    LIMIT ?';
-        }
-
-        $stmt = $this->executeQuery($sql, [$minVotes, $limit]);
-        $result = $stmt->fetchAll();
-
-        Cache::set($cacheKey, $result, 'statistics', 1800); // Кэш на 30 минут
-
-        return $result;
-    }
-
-
     /**
      * Добавить/удалить книгу в избранное (с инвалидацией кэша)
      */
@@ -984,7 +925,7 @@ public function rateBook($bookId, $rating, $userIp, $csrfToken = null)
             throw new Exception('Invalid CSRF token');
         }
 
-        $userIp = $this->sanitizeIp($userIp);
+        //$userIp = $this->sanitizeIp($userIp);
         $bookId = (int)$bookId;
 
         try {
@@ -1082,7 +1023,7 @@ public function rateBook($bookId, $rating, $userIp, $csrfToken = null)
     public function getUserFavorites($userIp, $page = 1, $perPage = 20)
     {
         $offset = (int)(($page - 1) * $perPage);
-        $userIp = $this->sanitizeIp($userIp);
+        //$userIp = $this->sanitizeIp($userIp);
 
         $stmt = $this->executeQuery(
             "SELECT b.*, f.created_at as favorited_at

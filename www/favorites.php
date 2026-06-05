@@ -16,7 +16,7 @@ if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) &&
 }
 
 $db = Database::getInstance();
-$userIp = $_SERVER['REMOTE_ADDR'];
+$userIp = DEVICE_ID; // $_SERVER['REMOTE_ADDR'];
 $page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
 
 $perPage = Config::getItemsPerPage();
@@ -232,8 +232,46 @@ require 'templates/header.php';
         <a href="stats.php" class="btn btn-outline-info ms-2">
             <i class="fas fa-chart-bar me-2"></i><?php echo __('stats'); ?>
         </a>
+
+<p>
+<div class="mb-4">
+    <button id="downloadFavoritesBtn" class="btn btn-success btn-lg">
+        <i class="fas fa-file-archive me-2"></i>
+        Скачать все книги из избранного (ZIP)
+    </button>
+    <div id="downloadProgress" style="display: none;" class="mt-2">
+        <div class="alert alert-info">
+            <i class="fas fa-spinner fa-spin me-2"></i>
+            Подготовка архива...
+        </div>
     </div>
 </div>
+</p>
+
+
+    </div>
+</div>
+
+
+<script>
+document.getElementById('downloadFavoritesBtn')?.addEventListener('click', function() {
+    const btn = this;
+    const progressDiv = document.getElementById('downloadProgress');
+    
+    btn.disabled = true;
+    progressDiv.style.display = 'block';
+    
+    // Просто переходим на скрипт скачивания
+    window.location.href = 'api/download_favorites_zip.php';
+    
+    // Возвращаем кнопку в исходное состояние через 3 секунды
+    setTimeout(() => {
+        btn.disabled = false;
+        progressDiv.style.display = 'none';
+    }, 3000);
+});
+</script>
+
 
 <!-- JavaScript для удаления из избранного -->
 <script>
@@ -312,6 +350,8 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 </script>
+
+
 
 <?php
 PageCache::save();

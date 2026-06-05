@@ -32,8 +32,8 @@ $description = $book['description'] ?? BookHelper::extractDescription($book);
 
 // Получаем рейтинг и статус избранного
 $rating = $db->getBookRating($bookId);
-$userRating = $db->getUserRating($bookId, $_SERVER['REMOTE_ADDR']);
-$isFavorite = $db->isBookInFavorites($bookId, $_SERVER['REMOTE_ADDR']);
+$userRating = $db->getUserRating($bookId, DEVICE_ID);
+$isFavorite = $db->isBookInFavorites($bookId, DEVICE_ID);
 
 require 'templates/header.php';
 ?>

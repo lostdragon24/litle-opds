@@ -68,3 +68,8 @@ www/config/.env
 www/config/config.ini
 GUI_QT6/BookScannerGUI.pro.user.09eb984
 /GUI_QT6/build
+www/collect_sourcess.sh
+www/collected_output.txt
+www/lib/ProfileId.php
+www/templates/.header.php.kate-swp
+www/test_opds_lang.php

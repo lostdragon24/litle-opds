@@ -13,10 +13,10 @@ try {
     $db = Database::getInstance();
 
     // Простейшая валидация IP
-    $userIp = $_SERVER['REMOTE_ADDR'];
-    if (!filter_var($userIp, FILTER_VALIDATE_IP)) {
-        $userIp = '0.0.0.0';
-    }
+    $userIp = DEVICE_ID; //$_SERVER['REMOTE_ADDR'];
+//    if (!filter_var($userIp, FILTER_VALIDATE_IP)) {
+//        $userIp = '0.0.0.0';
+//    }
 
     // Получаем входные данные
     $input = file_get_contents('php://input');

@@ -85,7 +85,7 @@ class DatabaseManager
             $info['readable_text'] = $info['is_readable'] ? __('admin_db_readable_yes') : __('admin_db_readable_no');
 
         } catch (Exception $e) {
-            error_log("Error getting DB info: " . $e->getMessage());
+            my_log("Error getting DB info: " . $e->getMessage());
             $info['status'] = 'error';
             $info['status_text'] = __('admin_db_status_error');
             $info['error'] = $e->getMessage();
@@ -159,7 +159,7 @@ class DatabaseManager
                 }
             }
         } catch (Exception $e) {
-            error_log("Error getting tables: " . $e->getMessage());
+            my_log("Error getting tables: " . $e->getMessage());
         }
 
         return $tables;
@@ -216,7 +216,7 @@ private function getTableSizeSQLite($tableName)
         return $size ? (int)$size : 0;
 
     } catch (Exception $e) {
-        error_log("Error calculating table size for $tableName: " . $e->getMessage());
+        my_log("Error calculating table size for $tableName: " . $e->getMessage());
         return 0;
     }
 }
@@ -262,7 +262,7 @@ private function getTableSizeSQLite($tableName)
             ];
 
         } catch (Exception $e) {
-            error_log("Backup failed: " . $e->getMessage());
+            my_log("Backup failed: " . $e->getMessage());
             return [
                 'success' => false,
                 'message' => __('admin_db_backup_failed') . ': ' . $e->getMessage()
@@ -716,7 +716,7 @@ private function getTableSizeSQLite($tableName)
                 $info['foreign_keys'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
             }
         } catch (Exception $e) {
-            error_log("Error getting table info: " . $e->getMessage());
+            my_log("Error getting table info: " . $e->getMessage());
             $info['error'] = $e->getMessage();
         }
 

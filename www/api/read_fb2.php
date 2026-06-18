@@ -20,6 +20,10 @@ if (!$book) {
     die('Book not found');
 }
 
+// Получаем номер страницы из GET параметра
+$page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
+$selectedEncoding = $_GET['encoding'] ?? $_COOKIE['reader_encoding'] ?? 'auto';
+
 $scriptPath = $_SERVER['SCRIPT_NAME'];
 $basePath = rtrim(dirname(dirname($scriptPath)), '/');
 
@@ -275,6 +279,15 @@ header('Content-Type: text/html; charset=utf-8');
         </div>
         <?php endif; ?>
         
+
+
+
+
+
+
+
+
+
 <!-- Содержимое страницы -->
 <div class="fb2-body">
 <?php 
@@ -308,67 +321,451 @@ echo $security->sanitizeBookContent($pages[$page - 1] ?? '');
         <?php endforeach; ?>
     </div>
     
-    <script>
-    // Сообщаем родительскому окну о пагинации
+<!-- api/read_fb2.php - полный блок скрипта в конце файла -->
+
+<script>
+// ============================================
+// СУЩЕСТВУЮЩИЙ КОД (оставляем как есть)
+// ============================================
+
+// Сообщаем родительскому окну о пагинации
+window.parent.postMessage({
+    type: 'pagination',
+    currentPage: <?php echo $page; ?>,
+    totalPages: <?php echo $totalPages; ?>
+}, '*');
+
+// Переключение меню кодировки
+function toggleEncodingMenu() {
+    const menu = document.getElementById('encodingMenu');
+    menu.classList.toggle('show');
+}
+
+// Закрыть меню при клике вне его
+document.addEventListener('click', function(event) {
+    const menu = document.getElementById('encodingMenu');
+    const indicator = document.querySelector('.encoding-indicator');
+    
+    if (!menu.contains(event.target) && !indicator.contains(event.target)) {
+        menu.classList.remove('show');
+    }
+});
+
+// Смена кодировки
+function changeEncoding(encoding) {
+    document.cookie = 'reader_encoding=' + encoding + '; path=/; max-age=31536000';
+    window.location.href = '?id=<?php echo $bookId; ?>&page=<?php echo $page; ?>&encoding=' + encoding;
+}
+
+// Слушаем команды от родительского окна (существующий код)
+window.addEventListener('message', function(event) {
+    // Существующие обработчики
+    if (event.data.type === 'navigate') {
+        if (event.data.direction === 'next' && <?php echo $page; ?> < <?php echo $totalPages; ?>) {
+            window.location.href = '?id=<?php echo $bookId; ?>&page=' + (<?php echo $page; ?> + 1) + '&encoding=<?php echo $selectedEncoding; ?>';
+        } else if (event.data.direction === 'prev' && <?php echo $page; ?> > 1) {
+            window.location.href = '?id=<?php echo $bookId; ?>&page=' + (<?php echo $page; ?> - 1) + '&encoding=<?php echo $selectedEncoding; ?>';
+        }
+    } else if (event.data.type === 'fontSize') {
+        document.cookie = 'reader_font_size=' + event.data.size + '; path=/';
+        window.location.reload();
+    } else if (event.data.type === 'theme') {
+        if (event.data.dark) {
+            document.body.classList.add('dark-theme');
+        } else {
+            document.body.classList.remove('dark-theme');
+        }
+    }
+    
+    // ============================================
+    // НОВЫЙ КОД ДЛЯ ЗАКЛАДОК
+    // ============================================
+    
+    // Получить текущую позицию
+    if (event.data.type === 'getPosition') {
+        const position = getCurrentPosition();
+        window.parent.postMessage({
+            type: 'position',
+            position: position
+        }, '*');
+    }
+    
+    // Перейти к позиции (закладке)
+    if (event.data.type === 'goTo' && event.data.cfi) {
+        goToPosition(event.data.cfi);
+    }
+});
+
+// ============================================
+// НОВЫЕ ФУНКЦИИ ДЛЯ ЗАКЛАДОК
+// ============================================
+
+/**
+ * Получить текущую позицию чтения
+ */
+function getCurrentPosition() {
+    return {
+        cfi: generateCfi(<?php echo $page; ?>),  // Используем PHP переменную $page
+        page: <?php echo $page; ?>,               // Используем PHP переменную $page
+        totalPages: <?php echo $totalPages; ?>,
+        percentage: Math.round((<?php echo $page; ?> / <?php echo $totalPages; ?>) * 100)
+    };
+}
+
+
+/**
+ * Сгенерировать CFI для текущей страницы FB2
+ * Для FB2 используем простой формат: cfi(/6/4[chap]!/4[body]/10[para]/2/1:СТРАНИЦА)
+ */
+function generateCfi(page) {
+    // Для FB2 используем простой формат
+    // В реальности нужно генерировать более точный CFI
+    return 'epubcfi(/6/4[book]!/4[body]/10[section]/2/1:' + page + ')';
+}
+
+
+/**
+ * Перейти к позиции по CFI
+ */
+function goToPosition(cfi) {
+    // Парсим номер страницы из CFI
+    let page = null;
+    
+    // Пробуем разные форматы
+    const match1 = cfi.match(/1:(\d+)\)/);
+    const match2 = cfi.match(/page=(\d+)/);
+    const match3 = cfi.match(/:(\d+)\)/);
+    
+    if (match1) {
+        page = parseInt(match1[1]);
+    } else if (match2) {
+        page = parseInt(match2[1]);
+    } else if (match3) {
+        page = parseInt(match3[1]);
+    }
+    
+    if (page && page > 0 && page <= <?php echo $totalPages; ?>) {
+        // Переходим на страницу
+        window.location.href = '?id=<?php echo $bookId; ?>&page=' + page + '&encoding=<?php echo $selectedEncoding; ?>';
+    } else {
+        // Если не удалось определить страницу, показываем уведомление
+        showNotification('Не удалось перейти к закладке', 'error');
+    }
+}
+
+
+/**
+ * Получить выделенный текст (для создания заметок)
+ */
+function getSelectedText() {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed) {
+        return null;
+    }
+    return {
+        text: selection.toString().trim(),
+        startOffset: selection.anchorOffset,
+        endOffset: selection.focusOffset,
+        // Можно добавить больше информации о контексте
+        context: getTextContext(selection.anchorNode)
+    };
+}
+
+/**
+ * Получить контекст выделенного текста (окружающий текст)
+ */
+function getTextContext(node, contextLength = 50) {
+    if (!node || node.nodeType !== Node.TEXT_NODE) {
+        return '';
+    }
+    
+    const text = node.textContent || '';
+    const offset = node.data?.length || 0;
+    
+    // Берем текст до и после выделения
+    const start = Math.max(0, offset - contextLength);
+    const end = Math.min(text.length, offset + contextLength);
+    
+    return text.substring(start, end);
+}
+
+/**
+ * Сохранить прогресс чтения (вызывается при смене страницы)
+ */
+function saveReadingProgress() {
+    const position = getCurrentPosition();
+    const duration = getReadingDuration();
+    
+    console.log('Saving progress:', {
+        book_id: <?php echo $bookId; ?>,
+        page: position.page,
+        percentage: position.percentage,
+        cfi: position.cfi
+    });
+    
+    // Отправляем родительскому окну
     window.parent.postMessage({
-        type: 'pagination',
-        currentPage: <?php echo $page; ?>,
-        totalPages: <?php echo $totalPages; ?>
+        type: 'saveProgress',
+        position: position,
+        duration: duration,
+        bookId: <?php echo $bookId; ?>
     }, '*');
-    
-    // Переключение меню кодировки
-    function toggleEncodingMenu() {
-        const menu = document.getElementById('encodingMenu');
-        menu.classList.toggle('show');
+}
+
+/**
+ * Получить время чтения на текущей странице
+ */
+let pageStartTime = Date.now();
+function getReadingDuration() {
+    const now = Date.now();
+    const duration = Math.round((now - pageStartTime) / 1000);
+    pageStartTime = now;
+    return duration;
+}
+
+/**
+ * Сохранять прогресс при уходе со страницы
+ */
+document.addEventListener('visibilitychange', function() {
+    if (document.hidden) {
+        // Страница скрыта - сохраняем прогресс
+        saveReadingProgress();
+    }
+});
+
+// Сохраняем прогресс при переходе на другую страницу
+window.addEventListener('beforeunload', function() {
+    saveReadingProgress();
+});
+
+// Сохраняем прогресс каждые 30 секунд
+let autoSaveInterval = setInterval(function() {
+    saveReadingProgress();
+}, 30000);
+
+// Останавливаем интервал при закрытии
+window.addEventListener('unload', function() {
+    clearInterval(autoSaveInterval);
+});
+
+// ============================================
+// КОНТЕКСТНОЕ МЕНЮ ДЛЯ СОЗДАНИЯ ЗАКЛАДОК
+// ============================================
+
+/**
+ * Добавляем пункт "Добавить закладку" в контекстное меню
+ */
+document.addEventListener('contextmenu', function(e) {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed) {
+        return;
     }
     
-    // Закрыть меню при клике вне его
-    document.addEventListener('click', function(event) {
-        const menu = document.getElementById('encodingMenu');
-        const indicator = document.querySelector('.encoding-indicator');
-        
-        if (!menu.contains(event.target) && !indicator.contains(event.target)) {
-            menu.classList.remove('show');
+    // Создаем кастомное меню (если нужно)
+    // Или просто обрабатываем выделение
+    const selectedText = selection.toString().trim();
+    if (selectedText.length > 0) {
+        // Показываем кнопку для быстрого создания закладки
+        showQuickBookmarkButton(e.clientX, e.clientY, selectedText);
+    }
+});
+
+/**
+ * Показать кнопку быстрого создания закладки
+ */
+function showQuickBookmarkButton(x, y, text) {
+    // Удаляем старую кнопку если есть
+    const oldBtn = document.getElementById('quick-bookmark-btn');
+    if (oldBtn) oldBtn.remove();
+    
+    const btn = document.createElement('div');
+    btn.id = 'quick-bookmark-btn';
+    btn.className = 'quick-bookmark-btn';
+    btn.innerHTML = `
+        <i class="fas fa-bookmark me-1"></i>
+        Добавить закладку
+        <span class="bookmark-preview">"${text.substring(0, 30)}${text.length > 30 ? '...' : ''}"</span>
+    `;
+    btn.style.cssText = `
+        position: fixed;
+        top: ${Math.min(y + 10, window.innerHeight - 60)}px;
+        left: ${Math.min(x + 10, window.innerWidth - 200)}px;
+        background: #2c3e50;
+        color: white;
+        padding: 8px 16px;
+        border-radius: 8px;
+        cursor: pointer;
+        z-index: 10000;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-size: 14px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        animation: slideUp 0.2s ease;
+    `;
+    
+    // Добавляем стили анимации
+    const style = document.createElement('style');
+    style.textContent = `
+        @keyframes slideUp {
+            from { transform: translateY(10px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
         }
+        .quick-bookmark-btn:hover {
+            background: #34495e;
+            transform: scale(1.02);
+        }
+        .bookmark-preview {
+            font-style: italic;
+            color: #a0c0d0;
+            font-size: 12px;
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+    `;
+    document.head.appendChild(style);
+    
+    document.body.appendChild(btn);
+    
+    // Обработчик клика
+    btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        this.remove();
+        
+        // Создаем закладку с выделенным текстом
+        const selectedText = window.getSelection().toString().trim();
+        const note = selectedText ? 'Цитата: ' + selectedText.substring(0, 100) : '';
+        
+        // Отправляем родительскому окну
+        window.parent.postMessage({
+            type: 'createBookmark',
+            position: getCurrentPosition(),
+            note: note,
+            selectedText: selectedText
+        }, '*');
+        
+        // Показываем уведомление
+        showNotification('Закладка создана!', 'success');
     });
     
-    // Смена кодировки
-    function changeEncoding(encoding) {
-        // Сохраняем в cookie
-        document.cookie = 'reader_encoding=' + encoding + '; path=/; max-age=31536000';
-        
-        // Перезагружаем страницу с новой кодировкой
-        window.location.href = '?id=<?php echo $bookId; ?>&page=<?php echo $page; ?>&encoding=' + encoding;
-    }
+    // Закрываем при клике вне кнопки
+    setTimeout(() => {
+        document.addEventListener('click', function closeBtn(e) {
+            if (!btn.contains(e.target)) {
+                btn.remove();
+                document.removeEventListener('click', closeBtn);
+            }
+        });
+    }, 100);
+}
+
+/**
+ * Показать уведомление внутри iframe
+ */
+function showNotification(message, type = 'info') {
+    // Создаем уведомление
+    const notification = document.createElement('div');
+    notification.className = `iframe-notification iframe-notification-${type}`;
+    notification.textContent = message;
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 12px 24px;
+        background: ${type === 'success' ? '#28a745' : type === 'error' ? '#dc3545' : '#17a2b8'};
+        color: white;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        z-index: 99999;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        font-size: 14px;
+        animation: slideIn 0.3s ease;
+        max-width: 400px;
+    `;
     
-    // Слушаем команды от родительского окна
-    window.addEventListener('message', function(event) {
-        if (event.data.type === 'navigate') {
-            if (event.data.direction === 'next' && <?php echo $page; ?> < <?php echo $totalPages; ?>) {
-                window.location.href = '?id=<?php echo $bookId; ?>&page=' + (<?php echo $page; ?> + 1) + '&encoding=<?php echo $selectedEncoding; ?>';
-            } else if (event.data.direction === 'prev' && <?php echo $page; ?> > 1) {
-                window.location.href = '?id=<?php echo $bookId; ?>&page=' + (<?php echo $page; ?> - 1) + '&encoding=<?php echo $selectedEncoding; ?>';
-            }
-        } else if (event.data.type === 'fontSize') {
-            document.cookie = 'reader_font_size=' + event.data.size + '; path=/';
-            window.location.reload();
-        } else if (event.data.type === 'theme') {
-            if (event.data.dark) {
-                document.body.classList.add('dark-theme');
-            } else {
-                document.body.classList.remove('dark-theme');
-            }
+    // Добавляем стили
+    const style = document.createElement('style');
+    style.textContent = `
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
         }
+        @keyframes slideOut {
+            from { transform: translateX(0); opacity: 1; }
+            to { transform: translateX(100%); opacity: 0; }
+        }
+    `;
+    document.head.appendChild(style);
+    
+    document.body.appendChild(notification);
+    
+    // Автоматически закрываем через 3 секунды
+    setTimeout(() => {
+        notification.style.animation = 'slideOut 0.3s ease';
+        setTimeout(() => notification.remove(), 300);
+    }, 3000);
+}
+
+// ============================================
+// ПРИМЕНЯЕМ СОХРАНЕННУЮ ТЕМУ (существующий код)
+// ============================================
+
+if (window.parent.document.body.classList.contains('dark-theme')) {
+    document.body.classList.add('dark-theme');
+}
+
+// ============================================
+// ДОПОЛНИТЕЛЬНО: ОТСЛЕЖИВАНИЕ ВРЕМЕНИ ЧТЕНИЯ
+// ============================================
+
+// Время начала чтения страницы
+let pageLoadTime = Date.now();
+
+// Отправляем событие о загрузке страницы
+window.parent.postMessage({
+    type: 'pageLoaded',
+    page: <?php echo $page; ?>,
+    totalPages: <?php echo $totalPages; ?>
+}, '*');
+
+// Отслеживаем активность пользователя (прокрутка, клики)
+let lastActivity = Date.now();
+const activityEvents = ['scroll', 'click', 'mousemove', 'keydown'];
+
+activityEvents.forEach(eventType => {
+    document.addEventListener(eventType, function() {
+        lastActivity = Date.now();
     });
+});
+
+// Проверяем активность каждые 5 секунд
+setInterval(function() {
+    const now = Date.now();
+    const inactiveTime = (now - lastActivity) / 1000;
     
-    // Применяем сохраненную тему
-    if (window.parent.document.body.classList.contains('dark-theme')) {
-        document.body.classList.add('dark-theme');
+    // Если пользователь не активен больше 60 секунд, не считаем время чтения
+    if (inactiveTime < 60) {
+        // Пользователь активен
+        window.parent.postMessage({
+            type: 'readingActivity',
+            active: true,
+            page: <?php echo $page; ?>
+        }, '*');
     }
-    </script>
-    
+}, 5000);
+
+console.log('Reader bookmarks initialized');
+</script>    
+
+
+
+
     <!-- Font Awesome для иконок -->
     <link rel="stylesheet" href="<?php echo $basePath; ?>/css/css/all.min.css">
+
 
 </body>
 </html>
@@ -447,5 +844,6 @@ function splitIntoPages($content) {
     
     return $pages;
 }
+
 
 ?>

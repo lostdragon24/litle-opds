@@ -21,7 +21,7 @@ abstract class BaseCoverParser implements CoverParserInterface
         if (!empty($book['archive_path']) && !empty($book['archive_internal_path'])) {
             // Проверяем существование архива
             if (!file_exists($book['archive_path'])) {
-                error_log("Archive not found: " . $book['archive_path']);
+                my_log("Archive not found: " . $book['archive_path']);
                 return false;
             }
 
@@ -37,7 +37,7 @@ abstract class BaseCoverParser implements CoverParserInterface
         // Если книга не в архиве (обычный файл)
         if (!empty($book['file_path'])) {
             if (!file_exists($book['file_path'])) {
-                error_log("File not found: " . $book['file_path']);
+                my_log("File not found: " . $book['file_path']);
                 return false;
             }
             return @file_get_contents($book['file_path']);

@@ -18,7 +18,7 @@ echo "=====================================\n";
 echo 'Старт: '.date('Y-m-d H:i:s')."\n\n";
 
 // Логируем запуск
-error_log('['.date('Y-m-d H:i:s').'] Запуск полной оптимизации БД');
+my_log('['.date('Y-m-d H:i:s').'] Запуск полной оптимизации БД');
 
 try {
     // ========== 1. ОПТИМИЗАЦИЯ В ЗАВИСИМОСТИ ОТ ТИПА БД ==========
@@ -305,9 +305,9 @@ try {
     echo "\nВремя выполнения: ".round($totalTime, 2)." сек\n";
     echo 'Завершено: '.date('Y-m-d H:i:s')."\n";
 
-    error_log('['.date('Y-m-d H:i:s').'] Оптимизация завершена за '.round($totalTime, 2).' сек');
+    my_log('['.date('Y-m-d H:i:s').'] Оптимизация завершена за '.round($totalTime, 2).' сек');
 } catch (Exception $e) {
-    error_log('['.date('Y-m-d H:i:s').'] Ошибка при оптимизации: '.$e->getMessage());
+    my_log('['.date('Y-m-d H:i:s').'] Ошибка при оптимизации: '.$e->getMessage());
     echo "\n❌ ОШИБКА: ".$e->getMessage()."\n";
 }
 

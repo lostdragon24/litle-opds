@@ -24,7 +24,7 @@ class GenreManager
         if (isset(self::$genresByLanguage[$lang])) {
             self::$genres = self::$genresByLanguage[$lang];
             self::$currentLanguage = $lang;
-            error_log("GenreManager: Using cached genres for {$lang}");
+            my_log("GenreManager: Using cached genres for {$lang}");
             return;
         }
 
@@ -40,7 +40,7 @@ class GenreManager
 
         self::$genresByLanguage[$lang] = self::$genres;
         self::$currentLanguage = $lang;
-        error_log("GenreManager: Loaded " . count(self::$genres) . " genres");
+        my_log("GenreManager: Loaded " . count(self::$genres) . " genres");
     }
 
     /**

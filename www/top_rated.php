@@ -37,13 +37,13 @@ $cacheKey = 'top_rated_data_v3'; // <-- Убедитесь, что это v3, а
 $allBooks = Cache::get($cacheKey, 'statistics');
 
 // Добавляем отладку
-error_log("=== TOP RATED CACHE CHECK ===");
-error_log("Cache key: " . $cacheKey);
-error_log("Cache type: statistics");
-error_log("Cache hit: " . ($allBooks !== null ? "YES" : "NO"));
+my_log("=== TOP RATED CACHE CHECK ===");
+my_log("Cache key: " . $cacheKey);
+my_log("Cache type: statistics");
+my_log("Cache hit: " . ($allBooks !== null ? "YES" : "NO"));
 
 if ($allBooks === null) {
-    error_log("Cache MISS - executing query");
+    my_log("Cache MISS - executing query");
 
     // ОПТИМИЗИРОВАННЫЙ ЗАПРОС С ИСПОЛЬЗОВАНИЕМ ИНДЕКСОВ
     $startTime = microtime(true);
@@ -103,13 +103,13 @@ if ($allBooks === null) {
     $stmt = $db->getConnection()->query($sql);
     $allBooks = $stmt->fetchAll();
     $queryTime = microtime(true) - $startTime;
-    error_log("Top rated query time: " . round($queryTime, 2) . " sec, found " . count($allBooks) . " books");
+    my_log("Top rated query time: " . round($queryTime, 2) . " sec, found " . count($allBooks) . " books");
 
     // Кэшируем на 1 час
     Cache::set($cacheKey, $allBooks, 'statistics', 3600);
-    error_log("Cache SET: {$cacheKey}");
+    my_log("Cache SET: {$cacheKey}");
 } else {
-    error_log("Cache HIT - using cached data, books count: " . count($allBooks));
+    my_log("Cache HIT - using cached data, books count: " . count($allBooks));
 }
 
 // ========== ПОЛУЧАЕМ СТАТУС ИЗБРАННОГО ОДНИМ ЗАПРОСОМ ==========

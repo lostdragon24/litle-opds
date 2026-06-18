@@ -27,7 +27,7 @@ class PageCache
         }
 
         if (!self::$enabled && Config::isDevelopment()) {
-            error_log(__('page_cache_disabled'));
+            my_log(__('page_cache_disabled'));
         }
     }
 
@@ -100,7 +100,7 @@ class PageCache
             }
 
             if (Config::isDevelopment()) {
-                error_log(sprintf(__('page_cache_saved'), self::$currentKey));
+                my_log(sprintf(__('page_cache_saved'), self::$currentKey));
             }
         }
 
@@ -118,7 +118,7 @@ class PageCache
         Cache::invalidateByType(Cache::TYPE_PAGE);
 
         if (Config::isDevelopment()) {
-            error_log(sprintf(__('page_cache_invalidated_user'), $userIp));
+            my_log(sprintf(__('page_cache_invalidated_user'), $userIp));
         }
 
         return true;
@@ -165,7 +165,7 @@ class PageCache
         }
 
         if (Config::isDevelopment()) {
-            error_log(sprintf(__('page_cache_cleared'), $deleted));
+            my_log(sprintf(__('page_cache_cleared'), $deleted));
         }
 
         return $deleted;
@@ -203,7 +203,7 @@ class PageCache
         }
 
         if (Config::isDevelopment() && $deleted > 0) {
-            error_log(sprintf(__('page_cache_lang_cleared'), $lang, $deleted));
+            my_log(sprintf(__('page_cache_lang_cleared'), $lang, $deleted));
         }
 
         return $deleted;

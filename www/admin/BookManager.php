@@ -344,7 +344,7 @@ class BookManager
                 Cache::invalidateByType('search_results');
 
                 // Логируем добавление
-                error_log("New book added via admin panel: ID $newId - $title (file: $safeFilename, size: " . $file['size'] . " bytes)");
+                my_log("New book added via admin panel: ID $newId - $title (file: $safeFilename, size: " . $file['size'] . " bytes)");
             }
 
             return $result;
@@ -415,7 +415,7 @@ class BookManager
 
         } catch (Exception $e) {
             $this->db->getConnection()->rollBack();
-            error_log("Error deleting book: " . $e->getMessage());
+            my_log("Error deleting book: " . $e->getMessage());
             throw new Exception(__('admin_book_delete_error') . ': ' . $e->getMessage());
         }
     }
@@ -496,7 +496,7 @@ class BookManager
 
         } catch (Exception $e) {
             $this->db->getConnection()->rollBack();
-            error_log("Error in bulk action: " . $e->getMessage());
+            my_log("Error in bulk action: " . $e->getMessage());
             throw new Exception(__('admin_bulk_error') . ': ' . $e->getMessage());
         }
     }
@@ -508,7 +508,7 @@ class BookManager
     {
         try {
             if (!$this->db || !$this->db->getConnection()) {
-                error_log("BookManager::getAllGenres() - Database not available");
+                my_log("BookManager::getAllGenres() - Database not available");
                 return [];
             }
 
@@ -519,11 +519,11 @@ class BookManager
             $stmt = $this->db->getConnection()->query($sql);
             $result = $stmt->fetchAll();
 
-            error_log("getAllGenres() returned " . count($result) . " genres");
+            my_log("getAllGenres() returned " . count($result) . " genres");
             return $result;
 
         } catch (Exception $e) {
-            error_log("Error getting genres: " . $e->getMessage());
+            my_log("Error getting genres: " . $e->getMessage());
             return [];
         }
     }
@@ -545,11 +545,11 @@ class BookManager
             $stmt = $this->db->getConnection()->query($sql);
             $result = $stmt->fetchAll();
 
-            error_log("getAllFileTypes() returned " . count($result) . " file types");
+            my_log("getAllFileTypes() returned " . count($result) . " file types");
             return $result;
 
         } catch (Exception $e) {
-            error_log("Error getting file types: " . $e->getMessage());
+            my_log("Error getting file types: " . $e->getMessage());
             return [];
         }
     }
@@ -572,11 +572,11 @@ class BookManager
             $stmt = $this->db->getConnection()->query($sql);
             $result = $stmt->fetchAll();
 
-            error_log("getAllAuthors() returned " . count($result) . " authors");
+            my_log("getAllAuthors() returned " . count($result) . " authors");
             return $result;
 
         } catch (Exception $e) {
-            error_log("Error getting authors: " . $e->getMessage());
+            my_log("Error getting authors: " . $e->getMessage());
             return [];
         }
     }

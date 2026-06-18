@@ -565,25 +565,29 @@ char* convert_encoding(const char* text, const char* from_encoding,
 
 char* clean_html_tags(const char* html)
 {
-    if (!html)
-        return NULL;
+    if (!html) return NULL;
 
     size_t len = strlen(html);
     char* result = safe_malloc(len + 1);
-    if (!result)
-        return NULL;
+    if (!result) return NULL;
 
     char* dest = result;
     int in_tag = 0;
     int in_entity = 0;
+    int skip_space = 0;
 
     for (size_t i = 0; i < len; i++) {
         if (html[i] == '<') {
             in_tag = 1;
+            skip_space = 1; // Убираем пробелы перед тегом
             continue;
         }
         if (html[i] == '>') {
             in_tag = 0;
+            // Добавляем пробел после закрытия тега
+            if (!skip_space && dest > result && *(dest - 1) != ' ') {
+                *dest++ = ' ';
+            }
             continue;
         }
         if (html[i] == '&') {
@@ -595,6 +599,10 @@ char* clean_html_tags(const char* html)
             continue;
         }
         if (!in_tag && !in_entity) {
+            if (skip_space && html[i] == ' ') {
+                continue; // Пропускаем пробелы после тега
+            }
+            skip_space = 0;
             *dest++ = html[i];
         }
     }

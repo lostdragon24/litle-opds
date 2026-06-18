@@ -42,7 +42,7 @@ class EnvManager
                 }
             }
         } else {
-            error_log(__('env_manager_file_not_found') . ': ' . $this->envFile);
+            my_log(__('env_manager_file_not_found') . ': ' . $this->envFile);
         }
 
         $this->loaded = true;
@@ -104,7 +104,7 @@ class EnvManager
         chmod($this->envFile, 0600);
         $this->reset();
 
-        error_log(__('env_manager_saved'));
+        my_log(__('env_manager_saved'));
 
         return true;
     }
@@ -183,7 +183,7 @@ class EnvManager
         $backupDir = __DIR__ . '/../backups/config';
         if (!file_exists($backupDir)) {
             if (!mkdir($backupDir, 0755, true)) {
-                error_log(sprintf(__('env_manager_cannot_create_backup_dir'), $backupDir));
+                my_log(sprintf(__('env_manager_cannot_create_backup_dir'), $backupDir));
                 return;
             }
         }
@@ -191,12 +191,12 @@ class EnvManager
         $backupFile = $backupDir . '/env.backup.' . date('Ymd_His');
 
         if (!copy($this->envFile, $backupFile)) {
-            error_log(sprintf(__('env_manager_backup_failed'), $this->envFile, $backupFile));
+            my_log(sprintf(__('env_manager_backup_failed'), $this->envFile, $backupFile));
             return;
         }
 
         chmod($backupFile, 0600);
-        error_log(sprintf(__('env_manager_backup_created'), basename($backupFile)));
+        my_log(sprintf(__('env_manager_backup_created'), basename($backupFile)));
 
         // Оставляем только последние 10 бэкапов
         $this->cleanupBackups($backupDir, 10);
@@ -226,7 +226,7 @@ class EnvManager
         }
 
         if ($deleted > 0) {
-            error_log(sprintf(__('env_manager_backups_cleaned'), $deleted, $keep));
+            my_log(sprintf(__('env_manager_backups_cleaned'), $deleted, $keep));
         }
     }
 
@@ -248,7 +248,7 @@ class EnvManager
         chmod($this->envFile, 0600);
         $this->reset();
 
-        error_log(sprintf(__('env_manager_restored'), basename($backupFile)));
+        my_log(sprintf(__('env_manager_restored'), basename($backupFile)));
 
         return true;
     }

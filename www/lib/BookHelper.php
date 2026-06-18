@@ -179,11 +179,11 @@ class BookHelper
                 $zip->close();
                 return $content;
             } else {
-                error_log(sprintf(__('book_helper_error_open_archive'), $book['archive_path']));
+                my_log(sprintf(__('book_helper_error_open_archive'), $book['archive_path']));
             }
         } else {
             if (!file_exists($book['file_path'])) {
-                error_log(sprintf(__('book_helper_error_file_not_found'), $book['file_path']));
+                my_log(sprintf(__('book_helper_error_file_not_found'), $book['file_path']));
                 return false;
             }
             return @file_get_contents($book['file_path']);
@@ -490,7 +490,7 @@ class BookHelper
             return $data;
 
         } catch (Exception $e) {
-            error_log("Imagick error: " . $e->getMessage());
+            my_log("Imagick error: " . $e->getMessage());
             return null;
         }
     }

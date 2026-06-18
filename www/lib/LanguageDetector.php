@@ -35,26 +35,26 @@ class LanguageDetector
 
     private function detectLanguage()
     {
-        error_log("=== LanguageDetector::detectLanguage() START ===");
-        error_log("Session name: " . $this->sessionName);
-        error_log("Is admin: " . (strpos($_SERVER['SCRIPT_NAME'], '/admin/') !== false ? 'yes' : 'no'));
-        error_log("POST data: " . print_r($_POST, true));
-        error_log("SESSION before: " . print_r($_SESSION, true));
+        my_log("=== LanguageDetector::detectLanguage() START ===");
+        my_log("Session name: " . $this->sessionName);
+        my_log("Is admin: " . (strpos($_SERVER['SCRIPT_NAME'], '/admin/') !== false ? 'yes' : 'no'));
+        my_log("POST data: " . print_r($_POST, true));
+        my_log("SESSION before: " . print_r($_SESSION, true));
 
         // 1. Сначала проверяем POST запрос (смена языка)
         if (isset($_POST['lang']) && in_array($_POST['lang'], $this->availableLangs)) {
             $this->currentLang = $_POST['lang'];
             $_SESSION['user_lang'] = $this->currentLang;
             setcookie('user_lang', $this->currentLang, time() + 86400 * 30, '/');
-            error_log("Language set from POST: " . $this->currentLang);
-            error_log("SESSION after POST: " . print_r($_SESSION, true));
+            my_log("Language set from POST: " . $this->currentLang);
+            my_log("SESSION after POST: " . print_r($_SESSION, true));
             return;
         }
 
         // 2. Проверяем сессию
         if (isset($_SESSION['user_lang']) && in_array($_SESSION['user_lang'], $this->availableLangs)) {
             $this->currentLang = $_SESSION['user_lang'];
-            error_log("Language from session: " . $this->currentLang);
+            my_log("Language from session: " . $this->currentLang);
             return;
         }
 
@@ -62,7 +62,7 @@ class LanguageDetector
         if (isset($_COOKIE['user_lang']) && in_array($_COOKIE['user_lang'], $this->availableLangs)) {
             $this->currentLang = $_COOKIE['user_lang'];
             $_SESSION['user_lang'] = $this->currentLang;
-            error_log("Language from cookie: " . $this->currentLang);
+            my_log("Language from cookie: " . $this->currentLang);
             return;
         }
 
@@ -75,7 +75,7 @@ class LanguageDetector
                     $this->currentLang = $langCode;
                     $_SESSION['user_lang'] = $this->currentLang;
                     setcookie('user_lang', $this->currentLang, time() + 86400 * 30, '/');
-                    error_log("Language from browser: " . $this->currentLang);
+                    my_log("Language from browser: " . $this->currentLang);
                     return;
                 }
             }
@@ -84,13 +84,13 @@ class LanguageDetector
         // 5. Язык по умолчанию
         $this->currentLang = $this->defaultLang;
         $_SESSION['user_lang'] = $this->defaultLang;
-        error_log("Language default: " . $this->currentLang);
+        my_log("Language default: " . $this->currentLang);
     }
 
 
     public function setLanguage($lang)
     {
-        error_log("LanguageDetector::setLanguage() called with: " . $lang);
+        my_log("LanguageDetector::setLanguage() called with: " . $lang);
 
         if (in_array($lang, $this->availableLangs)) {
             $this->currentLang = $lang;
@@ -120,11 +120,11 @@ class LanguageDetector
                 session_start();
             }
 
-            error_log("LanguageDetector::setLanguage() - New language: " . $lang);
-            error_log("SESSION after set: " . print_r($_SESSION, true));
+            my_log("LanguageDetector::setLanguage() - New language: " . $lang);
+            my_log("SESSION after set: " . print_r($_SESSION, true));
             return true;
         }
-        error_log("LanguageDetector::setLanguage() - Invalid language: " . $lang);
+        my_log("LanguageDetector::setLanguage() - Invalid language: " . $lang);
         return false;
     }
 

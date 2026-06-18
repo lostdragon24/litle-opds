@@ -1879,5 +1879,27 @@ return [
 'settings_field_opds_default_lang' => 'Язык OPDS по умолчанию',
 'settings_field_opds_default_lang_desc' => 'Язык, который будет использоваться в OPDS-каталоге, если не указан параметр lang в URL. "Авто" — определяется из настроек сайта.',
 
+'book_marks'		=> 'Закладки',
+'my_bookmark'	=>	'Мои закладки',
+'last_read'	=>	'Последнее прочитанное',
+'no_name_book'	=>	'Без названия',
+'incognito'	=>	'Неизвестен',
+'restore_read'	=>	'Продолжить чтение',
+'no_bookmarks'	=>	'У вас пока нет закладок. Добавляйте их во время чтения книг.',
+'delete_bookmark'	=>	'Удалить?',
+'bookmark_read'	=>	'Читать',
+
+'read_book'	=>	'● Читаем',
+'save_bookmark'	=>	'✓ Сохранено',
+'bookmarks'	=>	'Закладка',
+'bookmark_add'	=>	'Закладка добавлена',
+'bookmark_name'	=>	'Введите название закладки:',
+'bookmark_error'	=>	'Ошибка: ',
+'bookmark_msg'	=>	'Произошла ошибка при добавлении закладки',
+'read_book_pause'	=>	'○ Пауза',
+'bookmark_error_'	=>	'✗ Ошибка',
+
+'no_cover'	=>	'Нет обложки',
+
 
 ];

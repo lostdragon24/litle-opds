@@ -32,8 +32,12 @@ $description = $book['description'] ?? BookHelper::extractDescription($book);
 
 // Получаем рейтинг и статус избранного
 $rating = $db->getBookRating($bookId);
+//$userRating = $db->getUserRating($bookId, $_SERVER['REMOTE_ADDR']);
+//$isFavorite = $db->isBookInFavorites($bookId, $_SERVER['REMOTE_ADDR']);
+
 $userRating = $db->getUserRating($bookId, DEVICE_ID);
 $isFavorite = $db->isBookInFavorites($bookId, DEVICE_ID);
+error_log("DEVICE_ID: " . DEVICE_ID);
 
 require 'templates/header.php';
 ?>
@@ -58,7 +62,7 @@ require 'templates/header.php';
                   <div class="cover-container mb-3">
                         <?php if ($hasCover): ?>
                             <img src="./api/cover.php?id=<?php echo $book['id']; ?>" 
-                                 class="img-fluid rounded shadow" 
+                                 class="img-fluid rounded shadow zoom-effect" 
                                  alt="Обложка книги <?php echo htmlspecialchars($book['title']); ?>"
                                  style="max-height: 400px; width: auto;"
                                  loading="eager">
@@ -430,6 +434,14 @@ for ($i = 0; $i < $emptyStars; $i++) {
         flex-direction: column;
     }
 }
+.zoom-effect {
+  transition: transform 0.3s ease; /* Плавный переход */
+}
+
+.zoom-effect:hover {
+  transform: scale(1.2); /* Увеличение на 20% */
+}
+
 </style>
 
 

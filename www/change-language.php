@@ -46,22 +46,22 @@ if (isset($_POST['lang'])) {
     Cache::invalidateByType('search_results');
     Cache::invalidateByType('book_data');
 
-    error_log("Cache cleared after language change to: " . $lang);
+    my_log("Cache cleared after language change to: " . $lang);
 
     // Принудительно сохраняем сессию
     session_write_close();
 
-    error_log("Session after save: " . print_r($_SESSION, true));
+    my_log("Session after save: " . print_r($_SESSION, true));
 
     // Возвращаемся обратно
     $redirect = $referer ?: '/';
-    error_log("Redirecting to: " . $redirect);
+    my_log("Redirecting to: " . $redirect);
 
     SessionManager::getCsrfToken();
     header('Location: ' . $redirect);
     exit;
 }
 
-error_log("No lang in POST, redirecting to /");
+my_log("No lang in POST, redirecting to /");
 header('Location: /');
 exit;

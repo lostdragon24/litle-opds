@@ -188,7 +188,7 @@ private function setOpdsLanguage()
         // Устанавливаем язык для OPDS
         $this->setOpdsLanguageFromConfig();
 
-        error_log('OPDS Search called with query: '.$query.', page: '.$page);
+        my_log('OPDS Search called with query: '.$query.', page: '.$page);
 
         header('Content-Type: application/atom+xml; charset=utf-8');
 
@@ -197,7 +197,7 @@ private function setOpdsLanguage()
 
         try {
             $booksCount = $this->db->getSearchCount($query, 'all');
-            error_log("OPDS Search count for '$query': ".$booksCount);
+            my_log("OPDS Search count for '$query': ".$booksCount);
 
             $totalPages = $booksCount > 0 ? ceil($booksCount / $perPage) : 0;
 
@@ -251,7 +251,7 @@ private function setOpdsLanguage()
             $this->addPaginationLinks($xml, $page, $perPage, 'search', $totalPages, ['search' => $query]);
 
             $books = $this->db->searchBooks($query, 'all', $page, $perPage);
-            error_log('OPDS: Found '.count($books).' books');
+            my_log('OPDS: Found '.count($books).' books');
 
             if (count($books) > 0) {
                 foreach ($books as $book) {
@@ -277,7 +277,7 @@ private function setOpdsLanguage()
 
             return $xml->outputMemory();
         } catch (Exception $e) {
-            error_log('OPDS Search error: '.$e->getMessage());
+            my_log('OPDS Search error: '.$e->getMessage());
 
             $xml = new XMLWriter();
             $xml->openMemory();
@@ -1022,7 +1022,7 @@ private function addBookEntry($xml, $book)
         $xml->writeAttribute('label', htmlspecialchars($readableGenre));
         $xml->endElement();
 
-        error_log("OPDS Genre: {$book['genre']} -> {$readableGenre} (lang: {$opdsLang})");
+        my_log("OPDS Genre: {$book['genre']} -> {$readableGenre} (lang: {$opdsLang})");
     }
     // ============================================
 

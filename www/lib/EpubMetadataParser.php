@@ -64,7 +64,7 @@ class EpubMetadataParser
                 $zip->close();
             }
         } catch (Exception $e) {
-            error_log("EpubMetadataParser error: " . $e->getMessage());
+            my_log("EpubMetadataParser error: " . $e->getMessage());
         }
 
         // Удаляем временный файл

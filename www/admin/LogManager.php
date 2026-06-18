@@ -146,7 +146,7 @@ class LogManager
                 fclose($handle);
             }
         } catch (Exception $e) {
-            error_log("Error counting PHP errors: " . $e->getMessage());
+            my_log("Error counting PHP errors: " . $e->getMessage());
         }
 
         return $errorCount;
@@ -173,71 +173,102 @@ class LogManager
         }
     }
 
-    /**
-     * Очистить лог-файл
-     */
-    public function clearLog($logType)
-    {
-        $logFile = $this->getLogFileByType($logType);
+/**
+ * Очистить лог-файл
+ */
+public function clearLog($logType)
+{
+    $logFile = $this->getLogFileByType($logType);
 
-        if (!$logFile) {
-            throw new Exception(__('log_invalid_type'));
-        }
-
-        if (!file_exists($logFile)) {
-            // Файл не существует - создаём пустой
-            file_put_contents($logFile, '');
-            chmod($logFile, 0644);
-            return true;
-        }
-
-        if (!is_writable($logFile)) {
-            throw new Exception(__('log_not_writable'));
-        }
-
-        // Очищаем файл
-        if (unlink($logFile)) {
-            // Создаём новый с заголовком
-            $header = sprintf(
-                "[%s] [INFO] %s - %s\n",
-                date('Y-m-d H:i:s'),
-                $_SERVER['REMOTE_ADDR'] ?? 'CLI',
-                __('log_cleared')
-            );
-            file_put_contents($logFile, $header);
-            chmod($logFile, 0644);
-            return true;
-        }
-
-        throw new Exception(__('log_clear_failed'));
+    if (!$logFile) {
+        throw new Exception(__('log_invalid_type'));
     }
 
-    /**
-     * Скачать лог-файл
-     */
-    public function downloadLog($logType)
-    {
-        $logFile = $this->getLogFileByType($logType);
-
-        if (!$logFile || !file_exists($logFile)) {
-            throw new Exception(__('log_file_not_found'));
-        }
-
-        if (!is_readable($logFile)) {
-            throw new Exception(__('log_not_readable'));
-        }
-
-        $filename = basename($logFile);
-        $size = filesize($logFile);
-
-        header('Content-Type: text/plain');
-        header('Content-Disposition: attachment; filename="' . $filename . '_' . date('Y-m-d') . '.log"');
-        header('Content-Length: ' . $size);
-        header('Cache-Control: private, max-age=0, must-revalidate');
-
-        readfile($logFile);
-        exit;
+    if (!file_exists($logFile)) {
+        // Файл не существует - создаём пустой
+        file_put_contents($logFile, '');
+        chmod($logFile, 0644);
+        return true;
     }
+
+    if (!is_writable($logFile)) {
+        throw new Exception(__('log_not_writable'));
+    }
+
+    // Очищаем файл
+    if (unlink($logFile)) {
+        // Создаём новый с заголовком
+        $header = sprintf(
+            "[%s] [%s] %s - %s\n",
+            date('Y-m-d H:i:s'),
+            'INFO',
+            $_SERVER['REMOTE_ADDR'] ?? 'CLI',
+            __('log_cleared')
+        );
+        file_put_contents($logFile, $header);
+        chmod($logFile, 0644);
+        return true;
+    }
+
+    throw new Exception(__('log_clear_failed'));
+}
+
+/**
+ * Скачать лог-файл
+ */
+public function downloadLog($logType)
+{
+    // Получаем файл лога
+    $logFile = $this->getLogFileByType($logType);
+
+    // Проверяем существование
+    if (!$logFile) {
+        throw new Exception(__('log_invalid_type'));
+    }
+
+    if (!file_exists($logFile)) {
+        throw new Exception(__('log_file_not_found'));
+    }
+
+    if (!is_readable($logFile)) {
+        throw new Exception(__('log_not_readable'));
+    }
+
+    // Очищаем все буферы вывода
+    while (ob_get_level()) {
+        ob_end_clean();
+    }
+
+    $filename = basename($logFile);
+    $size = filesize($logFile);
+
+    // Заголовки для скачивания
+    header('Content-Type: text/plain');
+    header('Content-Disposition: attachment; filename="' . $filename . '_' . date('Y-m-d') . '.log"');
+    header('Content-Length: ' . $size);
+    header('Cache-Control: private, max-age=0, must-revalidate');
+    header('Pragma: public');
+
+    // Отправляем файл
+    readfile($logFile);
+
+    // ВАЖНО: завершаем выполнение
+    exit;
+}
+
+/**
+ * Получить лог-файл по типу
+ */
+private function getLogFileByType($type)
+{
+    $logFiles = [
+        'php' => $this->phpLogFile,
+        'scanner' => $this->scannerLogFile,
+        'system' => $this->systemLogFile
+    ];
+
+    return $logFiles[$type] ?? null;
+}
 
     /**
      * Ротация системного лога (создание бэкапа)
@@ -299,7 +330,7 @@ class LogManager
                 fclose($handle);
             }
         } catch (Exception $e) {
-            error_log("Error reading log file: " . $e->getMessage());
+            my_log("Error reading log file: " . $e->getMessage());
         }
 
         // Обрабатываем каждую строку для форматирования
@@ -373,23 +404,6 @@ class LogManager
         }
 
         return $info;
-    }
-
-    /**
-     * Получить лог-файл по типу
-     */
-    private function getLogFileByType($type)
-    {
-        switch ($type) {
-            case 'php':
-                return $this->phpLogFile;
-            case 'scanner':
-                return $this->scannerLogFile;
-            case 'system':
-                return $this->systemLogFile;
-            default:
-                return null;
-        }
     }
 
     /**

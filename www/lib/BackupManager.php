@@ -73,7 +73,7 @@ class BackupManager
 
         chmod($targetFile, 0600);
 
-        error_log(sprintf(__('backup_restored'), $filename, $targetFile));
+        my_log(sprintf(__('backup_restored'), $filename, $targetFile));
 
         return true;
     }
@@ -84,25 +84,25 @@ class BackupManager
     public function createBackup($sourceFile)
     {
         if (!file_exists($sourceFile)) {
-            error_log(sprintf(__('backup_error_source_not_found'), $sourceFile));
+            my_log(sprintf(__('backup_error_source_not_found'), $sourceFile));
             return false;
         }
 
         if (!is_readable($sourceFile)) {
-            error_log(sprintf(__('backup_error_source_not_readable'), $sourceFile));
+            my_log(sprintf(__('backup_error_source_not_readable'), $sourceFile));
             return false;
         }
 
         $backupFile = $this->backupDir . '/env.backup.' . date('Ymd_His');
 
         if (!copy($sourceFile, $backupFile)) {
-            error_log(sprintf(__('backup_error_copy_failed'), $sourceFile, $backupFile));
+            my_log(sprintf(__('backup_error_copy_failed'), $sourceFile, $backupFile));
             return false;
         }
 
         chmod($backupFile, 0600);
 
-        error_log(sprintf(__('backup_created'), basename($backupFile)));
+        my_log(sprintf(__('backup_created'), basename($backupFile)));
 
         // Оставляем только последние 10 бэкапов
         $this->cleanup(10);
@@ -127,14 +127,14 @@ class BackupManager
             $filePath = $this->backupDir . '/' . $backup['filename'];
             if (unlink($filePath)) {
                 $deleted++;
-                error_log(sprintf(__('backup_deleted'), $backup['filename']));
+                my_log(sprintf(__('backup_deleted'), $backup['filename']));
             } else {
-                error_log(sprintf(__('backup_error_delete'), $backup['filename']));
+                my_log(sprintf(__('backup_error_delete'), $backup['filename']));
             }
         }
 
         if ($deleted > 0) {
-            error_log(sprintf(__('backup_cleanup_completed'), $deleted, $keep));
+            my_log(sprintf(__('backup_cleanup_completed'), $deleted, $keep));
         }
 
         return $deleted;
@@ -176,7 +176,7 @@ class BackupManager
             throw new Exception(sprintf(__('backup_error_delete'), $filename));
         }
 
-        error_log(sprintf(__('backup_deleted'), $filename));
+        my_log(sprintf(__('backup_deleted'), $filename));
 
         return true;
     }
@@ -226,7 +226,7 @@ class BackupManager
         $freeSpace = disk_free_space($this->backupDir);
 
         if ($freeSpace === false) {
-            error_log(__('backup_error_cant_check_space'));
+            my_log(__('backup_error_cant_check_space'));
             return true; // Не можем проверить - предполагаем что хватит
         }
 

@@ -50,9 +50,9 @@ class LibraryBackupManager
         foreach ($files as $file) {
             $size += $file->getSize();
             // Если уже превысили лимит, можно остановиться
-            if ($size > $this->maxSize) {
-                return $size;
-            }
+            //if ($size > $this->maxSize) {
+            //    return $size;
+            //}
         }
 
         return $size;

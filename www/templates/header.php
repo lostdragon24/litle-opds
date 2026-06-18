@@ -3,7 +3,7 @@
 
 // Получаем базовый путь без учета админки
 $scriptPath = $_SERVER['SCRIPT_NAME'];
-$basePath = rtrim(dirname(dirname($scriptPath)), '/'); // Поднимаемся на один уровень выше для админки
+$basePath = rtrim(dirname(dirname($scriptPath)), '/');
 
 // Если мы не в админке, используем обычный путь
 if (strpos($scriptPath, '/admin/') === false) {
@@ -29,12 +29,13 @@ $langFlag = $detector->getLanguageFlag();
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?php echo htmlspecialchars(Config::getSiteTitle()); ?></title>
-    <link rel="shortcut icon" href="/favicon.ico" type="image/x-icon">
+    <link rel="shortcut icon" href="<?php echo $basePath; ?>/favicon.ico" type="image/x-icon">
 
     <!-- Bootstrap CSS -->
     <link rel="stylesheet" href="<?php echo $basePath; ?>/css/css/bootstrap.min.css">
     <link rel="stylesheet" href="<?php echo $basePath; ?>/css/css/all.min.css">
     <script src="<?php echo $basePath; ?>/css/js/bootstrap.bundle.min.js"></script>
+    <script src="<?php echo $basePath; ?>/js/api-client.js?v=<?php echo time(); ?>"></script>
 
     <!-- Глобальные переменные JavaScript -->
 <script>
@@ -185,6 +186,18 @@ $langFlag = $detector->getLanguageFlag();
                         </a>
                     </li>
                     <li class="nav-item">
+                        <a class="nav-link" href="<?php echo $basePath; ?>/bookmarks.php">
+                            <?php echo __('book_marks'); ?>
+                        </a>
+                    </li>
+
+
+
+
+
+
+
+                    <li class="nav-item">
                         <a class="nav-link <?php echo $isAdmin ? 'active' : ''; ?>" 
                            href="<?php echo $basePath; ?>/admin/index.php">
                             <?php echo __('admin'); ?>
@@ -316,6 +329,10 @@ function handleCoverError(img, height = 400) {
 (async function() {
     // Функция получения fingerprint
     async function getFingerprint() {
+
+    if (Fingerprint) return Fingerprint;
+
+
         // Собираем стабильные данные
         const data = {
             // Разрешение экрана (обычно не меняется)
@@ -358,6 +375,7 @@ function handleCoverError(img, height = 400) {
     
     // Получаем или создаём fingerprint
     let fingerprint = localStorage.getItem('device_fingerprint');
+    let Fingerprint = null;
     
     if (!fingerprint) {
         fingerprint = await getFingerprint();

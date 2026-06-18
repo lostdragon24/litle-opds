@@ -171,6 +171,53 @@ int create_database_tables(DatabaseHandle* db_handle, Config* config)
             log_message(config, "WARNING", "Failed to create hash index");
         }
 
+        const char* idx_books_file_path = "CREATE INDEX IF NOT EXISTS idx_books_file_path ON books(file_path);";
+        if (!db_execute(db_handle, idx_books_file_path, config)) {
+            log_message(config, "WARNING", "Failed to create idx_books_file_path index");
+        }
+
+        const char* idx_books_archive_path = "CREATE INDEX IF NOT EXISTS idx_books_archive_path ON books(archive_path);";
+        if (!db_execute(db_handle, idx_books_archive_path, config)) {
+            log_message(config, "WARNING", "Failed to create idx_books_archive_path index");
+        }
+
+        const char* idx_books_title = "CREATE INDEX IF NOT EXISTS idx_books_title ON books(title);";
+        if (!db_execute(db_handle, idx_books_title, config)) {
+            log_message(config, "WARNING", "Failed to create idx_books_title index");
+        }
+
+        const char* idx_books_author = "CREATE INDEX IF NOT EXISTS idx_books_author ON books(author);";
+        if (!db_execute(db_handle, idx_books_author, config)) {
+            log_message(config, "WARNING", "Failed to create idx_books_author index");
+        }
+
+        const char* idx_books_genre = "CREATE INDEX IF NOT EXISTS idx_books_genre ON books(genre);";
+        if (!db_execute(db_handle, idx_books_genre, config)) {
+            log_message(config, "WARNING", "Failed to create idx_books_genre index");
+        }
+
+        const char* idx_books_series = "CREATE INDEX IF NOT EXISTS idx_books_series ON books(series);";
+        if (!db_execute(db_handle, idx_books_series, config)) {
+            log_message(config, "WARNING", "Failed to create idx_books_series index");
+        }
+
+        const char* idx_books_year = "CREATE INDEX IF NOT EXISTS idx_books_year ON books(year);";
+        if (!db_execute(db_handle, idx_books_year, config)) {
+            log_message(config, "WARNING", "Failed to create idx_books_year index");
+        }
+
+        const char* idx_books_language = "CREATE INDEX IF NOT EXISTS idx_books_language ON books(language);";
+        if (!db_execute(db_handle, idx_books_language, config)) {
+            log_message(config, "WARNING", "Failed to create idx_books_language index");
+        }
+
+        const char* idx_books_publisher = "CREATE INDEX IF NOT EXISTS idx_books_publisher ON books(publisher);";
+        if (!db_execute(db_handle, idx_books_publisher, config)) {
+            log_message(config, "WARNING", "Failed to create idx_books_publisher index");
+        }
+
+
+
         break;
     }
     case DB_MYSQL:
@@ -318,6 +365,140 @@ int create_favorites_table(DatabaseHandle* db_handle, Config* config)
             db_handle->db_type);
         return 0;
     }
+
+        if (!create_bookmarks_table(db_handle, config)) {
+        return 0;
+    }
+
+    return 1;
+}
+
+
+int create_bookmarks_table(DatabaseHandle* db_handle, Config* config)
+{
+    if (!db_handle || !db_handle->connection) {
+        log_message(config, "ERROR",
+            "No database connection for creating bookmarks table");
+        return 0;
+    }
+
+    switch (db_handle->db_type) {
+    case DB_SQLITE: {
+        const char* create_bookmarks_table_sql = "CREATE TABLE IF NOT EXISTS bookmarks ("
+                                                "   id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                                                "   user_fingerprint VARCHAR(64) NOT NULL,"
+                                                "   book_id INTEGER NOT NULL,"
+                                                "   cfi_range VARCHAR(255) NOT NULL,"
+                                                "   page_number INTEGER DEFAULT 0,"
+                                                "   percentage DECIMAL(5,2) DEFAULT 0,"
+                                                "   note TEXT,"
+                                                "   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
+                                                "   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
+                                                "   last_read TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
+                                                "   is_deleted BOOLEAN DEFAULT 0,"
+                                                "   FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE"
+                                                ");";
+
+        if (!db_execute(db_handle, create_bookmarks_table_sql, config)) {
+            log_message(config, "ERROR", "Bookmarks to create favorites table");
+            return 0;
+        }
+
+        log_message(config, "DEBUG", "Bookmarks table created successfully");
+
+
+        const char* idx_bookmarks_user_book = "CREATE INDEX IF NOT EXISTS idx_bookmarks_user_book ON bookmarks(user_fingerprint, book_id);";
+        if (!db_execute(db_handle, idx_bookmarks_user_book, config)) {
+            log_message(config, "WARNING", "Failed to create idx_bookmarks_user_book index");
+        }
+
+        const char* idx_bookmarks_last_read = "CREATE INDEX IF NOT EXISTS idx_bookmarks_last_read ON bookmarks(last_read DESC);";
+        if (!db_execute(db_handle, idx_bookmarks_last_read, config)) {
+            log_message(config, "WARNING", "Failed to create idx_bookmarks_last_read index");
+        }
+
+        const char* idx_bookmarks_book = "CREATE INDEX IF NOT EXISTS idx_bookmarks_book ON bookmarks(book_id);";
+        if (!db_execute(db_handle, idx_bookmarks_book, config)) {
+            log_message(config, "WARNING", "Failed to create idx_bookmarks_book index");
+        }
+
+
+        break;
+    }
+    case DB_MYSQL:
+        return mysql_create_bookmarks_table(
+            (MySQLConnection*)db_handle->connection, config);
+    default:
+        log_message(config, "ERROR",
+            "Unknown database type in create bookmarks table: %d",
+            db_handle->db_type);
+        return 0;
+    }
+
+    if (!create_reading_history_table(db_handle, config)) {
+        return 0;
+    }
+
+    return 1;
+}
+
+int create_reading_history_table(DatabaseHandle* db_handle, Config* config)
+{
+    if (!db_handle || !db_handle->connection) {
+        log_message(config, "ERROR",
+            "No database connection for creating reading_history table");
+        return 0;
+    }
+
+    switch (db_handle->db_type) {
+    case DB_SQLITE: {
+        const char* create_reading_history_table_sql = "CREATE TABLE IF NOT EXISTS reading_history ("
+                                                       "    id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                                                       "    user_fingerprint VARCHAR(64) NOT NULL,"
+                                                       "    book_id INTEGER NOT NULL,"
+                                                       "    cfi_range VARCHAR(255) NOT NULL,"
+                                                       "    page_number INTEGER DEFAULT 0,"
+                                                       "    percentage DECIMAL(5,2) DEFAULT 0,"
+                                                       "    read_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
+                                                       "    duration_seconds INTEGER DEFAULT 0,"
+                                                       "    FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE"
+                                                        ");";
+
+        if (!db_execute(db_handle, create_reading_history_table_sql, config)) {
+            log_message(config, "ERROR", "Failed to create reading_history table");
+            return 0;
+        }
+
+        log_message(config, "DEBUG", "Reading_history table created successfully");
+
+
+        const char* idx_reading_history_user = "CREATE INDEX IF NOT EXISTS idx_reading_history_user ON reading_history(user_fingerprint);";
+        if (!db_execute(db_handle, idx_reading_history_user, config)) {
+            log_message(config, "WARNING", "Failed to create idx_reading_history_user index");
+        }
+
+        const char* idx_reading_history_book = "CREATE INDEX IF NOT EXISTS idx_reading_history_book ON reading_history(book_id);";
+        if (!db_execute(db_handle, idx_reading_history_book, config)) {
+            log_message(config, "WARNING", "Failed to create idx_reading_history_book index");
+        }
+
+        const char* idx_reading_history_time = "CREATE INDEX IF NOT EXISTS idx_reading_history_time ON reading_history(read_time DESC);";
+        if (!db_execute(db_handle, idx_reading_history_time, config)) {
+            log_message(config, "WARNING", "Failed to create idx_reading_history_time index");
+        }
+
+        break;
+    }
+    case DB_MYSQL:
+        return mysql_create_reading_history_table(
+            (MySQLConnection*)db_handle->connection, config);
+    default:
+        log_message(config, "ERROR",
+            "Unknown database type in create reading_history table: %d",
+            db_handle->db_type);
+        return 0;
+    }
+
     return 1;
 }
 
@@ -581,6 +762,11 @@ void insert_book_to_db(DatabaseHandle* db_handle, const char* filepath,
     log_message(config, "DEBUG", "[INSERT_BOOK_TO_DB] Inserting book: %s", filepath);
     log_message(config, "DEBUG", "[INSERT_BOOK_TO_DB] Database type: %d", db_handle->db_type);
 
+    log_message(config, "DEBUG", "[INSERT_BOOK_TO_DB] Title: %s", meta->title ? meta->title : "NULL");
+    log_message(config, "DEBUG", "[INSERT_BOOK_TO_DB] Author: %s", meta->author ? meta->author : "NULL");
+    log_message(config, "DEBUG", "[INSERT_BOOK_TO_DB] Description: %s", meta->description ? meta->description : "NULL");
+    log_message(config, "DEBUG", "[INSERT_BOOK_TO_DB] Description length: %zu", meta->description ? strlen(meta->description) : 0);
+
     switch (db_handle->db_type) {
     case DB_SQLITE: {
         sqlite3* db = (sqlite3*)db_handle->connection;
@@ -709,14 +895,19 @@ void insert_book_to_db(DatabaseHandle* db_handle, const char* filepath,
             sqlite3_bind_null(stmt, param++);
         }
 
+
+       //  printf("DEBUG: INSERT annotation: %s\n", meta->description);
+
         // 16. description
         if (meta->description && meta->description[0] != '\0') {
             if (strlen(meta->description) > 1000) {
                 char* short_desc = strndup(meta->description, 1000);
                 sqlite3_bind_text(stmt, param++, short_desc, -1, SQLITE_TRANSIENT);
+              //  printf("DEBUG: INSERT binding: %s\n", "!!!!!!!!!!!!!");
                 free(short_desc);
             } else {
                 sqlite3_bind_text(stmt, param++, meta->description, -1, SQLITE_STATIC);
+          //      printf("DEBUG: INSERT binding: %s\n", "@@@@@@@@@@@@");
             }
         } else {
             sqlite3_bind_null(stmt, param++);

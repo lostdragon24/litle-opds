@@ -34,7 +34,7 @@ class PathManager
             self::$booksDir = trim(self::$booksDir, '"\'');
             // Убираем лишние слэши в конце
             self::$booksDir = rtrim(self::$booksDir, '/');
-            error_log("PathManager::getBooksDir() = " . self::$booksDir);
+            // my_log("PathManager::getBooksDir() = " . self::$booksDir);
         }
         return self::$booksDir;
     }

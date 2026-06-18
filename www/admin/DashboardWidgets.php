@@ -35,7 +35,7 @@ class DashboardWidgets
             $stmt = $this->db->getConnection()->query("SELECT COUNT(DISTINCT series) as count FROM books WHERE series IS NOT NULL AND series != ''");
             $stats[3]['value'] = number_format($stmt->fetchColumn());
         } catch (Exception $e) {
-            error_log("Error getting stats: " . $e->getMessage());
+            my_log("Error getting stats: " . $e->getMessage());
             // Оставляем значения по умолчанию
         }
 
@@ -68,7 +68,7 @@ class DashboardWidgets
             $stmt->execute([$limit]);
             return $stmt->fetchAll();
         } catch (Exception $e) {
-            error_log("Error getting recent books: " . $e->getMessage());
+            my_log("Error getting recent books: " . $e->getMessage());
             return [];
         }
     }

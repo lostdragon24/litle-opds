@@ -38,6 +38,7 @@ typedef unsigned char mysql_bool_t;
 #define MYSQL_BOOL_TRUE 1
 #define MYSQL_BOOL_FALSE 0
 
+
 #ifndef SAFE_FREE
 #define SAFE_FREE(ptr)  \
     do {                \
@@ -283,8 +284,76 @@ int mysql_create_favorites_table(MySQLConnection* mysql_conn, Config* config)
                                              "    FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE"
                                              ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
 
-    return mysql_execute_query(mysql_conn, create_favorites_table_sql, config);
+
+        if (!mysql_execute_query(mysql_conn, create_favorites_table_sql, config)) {
+        return 0;
+    }
+
+        if (!mysql_create_bookmarks_table(mysql_conn, config)) {
+        return 0;
+    }
+
+    return 1;
+
 }
+
+int mysql_create_bookmarks_table(MySQLConnection* mysql_conn, Config* config)
+{
+    const char* query =
+        "CREATE TABLE IF NOT EXISTS bookmarks ("
+        "    id INT AUTO_INCREMENT PRIMARY KEY,"
+        "    user_fingerprint VARCHAR(64) NOT NULL,"
+        "    book_id INT NOT NULL,"
+        "    cfi_range VARCHAR(255) NOT NULL,"
+        "    page_number INT DEFAULT 0,"
+        "    percentage DECIMAL(5,2) DEFAULT 0.00,"
+        "    note TEXT,"
+        "    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
+        "    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,"
+        "    last_read TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
+        "    is_deleted TINYINT(1) DEFAULT 0,"
+        "    INDEX idx_bookmarks_user_book (user_fingerprint, book_id),"
+        "    INDEX idx_bookmarks_last_read (last_read),"
+        "    INDEX idx_bookmarks_book (book_id),"
+        "    FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+
+    if (!mysql_execute_query(mysql_conn, query, config)) {
+        return 0;
+    }
+
+    if (!mysql_create_reading_history_table(mysql_conn, config)) {
+        return 0;
+    }
+
+    return 1;
+}
+
+int mysql_create_reading_history_table(MySQLConnection* mysql_conn, Config* config)
+{
+    const char* query =
+        "CREATE TABLE IF NOT EXISTS reading_history ("
+        "    id INT AUTO_INCREMENT PRIMARY KEY,"
+        "    user_fingerprint VARCHAR(64) NOT NULL,"
+        "    book_id INT NOT NULL,"
+        "    cfi_range VARCHAR(255) NOT NULL,"
+        "    page_number INT DEFAULT 0,"
+        "    percentage DECIMAL(5,2) DEFAULT 0.00,"
+        "    read_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
+        "    duration_seconds INT DEFAULT 0,"
+        "    INDEX idx_reading_history_user (user_fingerprint),"
+        "    INDEX idx_reading_history_book (book_id),"
+        "    INDEX idx_reading_history_time (read_time),"
+        "    FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE"
+        ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci";
+
+    return mysql_execute_query(mysql_conn, query, config);
+}
+
+
+
+
+
 
 int mysql_archive_needs_rescan(MySQLConnection* mysql_conn,
     const char* archive_path,
@@ -603,7 +672,7 @@ int mysql_reconnect(MySQLConnection* mysql_conn, Config* config)
     return 1;
 }
 
-// === ИСПРАВЛЕННАЯ mysql_insert_book() ===
+// === mysql_insert_book() ===
 void mysql_insert_book(MySQLConnection* mysql_conn, const char* filepath,
     BookMeta* meta, const char* archive_path,
     const char* internal_path, const char* file_hash,
@@ -745,7 +814,7 @@ void mysql_insert_book(MySQLConnection* mysql_conn, const char* filepath,
     }
     bind[6].is_null = &is_null[6];
 
-    // ========== 8. title (ОБЯЗАТЕЛЬНОЕ) ==========
+    // ========== 8. title ==========
     const char* title = (meta->title && meta->title[0] != '\0') ? meta->title : "Unknown Title";
     lengths[7] = strlen(title);
     bind[7].buffer_type = MYSQL_TYPE_STRING;
@@ -755,7 +824,7 @@ void mysql_insert_book(MySQLConnection* mysql_conn, const char* filepath,
     is_null[7] = MYSQL_BOOL_FALSE;
     bind[7].is_null = &is_null[7];
 
-    // ========== 9. author (ОБЯЗАТЕЛЬНОЕ) ==========
+    // ========== 9. author ==========
     const char* author = (meta->author && meta->author[0] != '\0') ? meta->author : "Unknown Author";
     lengths[8] = strlen(author);
     bind[8].buffer_type = MYSQL_TYPE_STRING;
@@ -875,8 +944,7 @@ void mysql_insert_book(MySQLConnection* mysql_conn, const char* filepath,
 
 skip_description:
 
-    // ========== 17. last_modified (NOW() в запросе) ==========
-    // Не нужен параметр
+    // ========== 17. last_modified (в запросе) ==========
 
     // Биндим параметры
     if (mysql_stmt_bind_param(stmt, bind)) {
@@ -964,10 +1032,8 @@ int check_book_exists_smart(MySQLConnection* mysql_conn, BookMeta* meta,
         return 0;
     }
 
-    mysql_real_escape_string(mysql_conn->mysql, escaped_title, meta->title,
-        title_len);
-    mysql_real_escape_string(mysql_conn->mysql, escaped_author, meta->author,
-        author_len);
+    mysql_real_escape_string(mysql_conn->mysql, escaped_title, meta->title, title_len);
+    mysql_real_escape_string(mysql_conn->mysql, escaped_author, meta->author, author_len);
 
     char sql[8192];
     int sql_len = snprintf(sql, sizeof(sql),

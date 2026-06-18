@@ -31,7 +31,7 @@ class Cache
         self::$apcuEnabled = Config::isUseApcu() && extension_loaded('apcu') && apcu_enabled();
 
         if (!self::$apcuEnabled && Config::isCacheEnabled()) {
-            error_log(__('cache_warning_apcu_not_available'));
+            my_log(__('cache_warning_apcu_not_available'));
         }
 
         self::$initialized = true;
@@ -52,7 +52,7 @@ class Cache
         $value = apcu_fetch($prefixedKey, $success);
 
         if (!$success && Config::isDevelopment()) {
-            error_log(sprintf(__('cache_miss'), $prefixedKey));
+            my_log(sprintf(__('cache_miss'), $prefixedKey));
         }
 
         return $success ? $value : null;
@@ -77,7 +77,7 @@ class Cache
         $result = apcu_store($prefixedKey, $data, $ttl);
 
         if ($result && Config::isDevelopment()) {
-            error_log(sprintf(__('cache_store'), $prefixedKey, $ttl));
+            my_log(sprintf(__('cache_store'), $prefixedKey, $ttl));
         }
 
         // Индексируем по типу для быстрой инвалидации
@@ -127,7 +127,7 @@ class Cache
         apcu_delete($indexKey);
 
         if ($deleted > 0) {
-            error_log(sprintf(__('cache_invalidated'), $deleted, $type));
+            my_log(sprintf(__('cache_invalidated'), $deleted, $type));
         }
 
         return $deleted;
@@ -145,7 +145,7 @@ class Cache
         $result = apcu_delete($key);
 
         if ($result && Config::isDevelopment()) {
-            error_log(sprintf(__('cache_deleted'), $key));
+            my_log(sprintf(__('cache_deleted'), $key));
         }
 
         return $result;
@@ -157,13 +157,13 @@ class Cache
     public static function clear()
     {
         if (!self::$apcuEnabled) {
-            error_log(__('cache_clear_error'));
+            my_log(__('cache_clear_error'));
 
             return false;
         }
 
         apcu_clear_cache();
-        error_log(__('cache_cleared'));
+        my_log(__('cache_cleared'));
 
         return true;
     }

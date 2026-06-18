@@ -47,6 +47,10 @@ AppInitializer::init();
 // ============================================
 require_once LOPDS_ROOT . '/lib/LanguageDetector.php';
 require_once LOPDS_ROOT . '/lib/Translator.php';
+require_once LOPDS_ROOT . '/lib/Logger.php';
+Logger::setLogFile(Config::getCacheDir() . '/system.log');
+
+
 
 // Инициализируем переводчик (он определит язык из сессии или POST)
 $translator = Translator::getInstance();
@@ -60,6 +64,6 @@ if ($currentLang === 'ru') {
     setlocale(LC_TIME, 'en_US.UTF-8');
 }
 
-error_log("init.php - Is admin: " . ($isAdmin ? 'yes' : 'no'));
-error_log("init.php - Session name: " . session_name());
-error_log("init.php - Final current language: " . $currentLang);
+my_log("init.php - Is admin: " . ($isAdmin ? 'yes' : 'no'));
+my_log("init.php - Session name: " . session_name());
+my_log("init.php - Final current language: " . $currentLang);

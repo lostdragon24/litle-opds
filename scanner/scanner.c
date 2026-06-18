@@ -118,6 +118,9 @@ void process_file(const char* filepath, DatabaseHandle* db_handle, Config* confi
             }
 
             insert_book_to_db(db_handle, filepath, meta, NULL, NULL, meta->file_hash, config);
+
+            log_message(config, "DEBUG", "[INSERT_BOOK_TO_DB] meta: %s", meta->description, filepath);
+
             free_book_meta(meta);
         } else {
             log_message(config, "WARNING", "Failed to parse metadata for: %s", filepath);

@@ -294,7 +294,7 @@ class SettingsManager
      */
     public function saveSettings($post)
     {
-        error_log("=== SAVE SETTINGS ===");
+        my_log("=== SAVE SETTINGS ===");
 
         // 1. Сначала получаем текущие настройки
         $currentEnv = $this->envManager->getAll();
@@ -306,10 +306,10 @@ class SettingsManager
         if (empty($post['DB_PASS']) || $post['DB_PASS'] === '********') {
             if (isset($currentEnv['DB_PASS'])) {
                 $newSettings['DB_PASS'] = $currentEnv['DB_PASS'];
-                error_log("Keeping existing DB password");
+                my_log("Keeping existing DB password");
             }
         } else {
-            error_log("Updating DB password");
+            my_log("Updating DB password");
             // Пароль уже в $newSettings из POST
         }
 

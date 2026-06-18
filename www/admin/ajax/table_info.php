@@ -40,7 +40,7 @@ if (empty($table)) {
 }
 
 // Безопасность: разрешаем только определенные таблицы
-$allowedTables = ['books', 'book_ratings', 'book_favorites', 'archives'];
+$allowedTables = ['books', 'book_ratings', 'book_favorites', 'archives', 'bookmarks', 'reading_history'];
 if (!in_array($table, $allowedTables)) {
     echo json_encode([
         'success' => false,

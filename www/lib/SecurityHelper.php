@@ -174,11 +174,11 @@ class SecurityHelper
     {
         $this->startSession();
         if (empty($token) || empty($_SESSION['csrf_token'])) {
-            error_log("CSRF validate: empty token or session token");
+            my_log("CSRF validate: empty token or session token");
             return false;
         }
         $result = hash_equals($_SESSION['csrf_token'], $token);
-        error_log("CSRF validate: " . ($result ? "success" : "failed"));
+        my_log("CSRF validate: " . ($result ? "success" : "failed"));
         return $result;
     }
 

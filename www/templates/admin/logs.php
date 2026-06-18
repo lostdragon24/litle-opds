@@ -71,6 +71,7 @@ $activeTab = $_GET['tab'] ?? 'system';
          id="system-log" 
          role="tabpanel">
         <div class="card">
+
             <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
                 <span>
                     <i class="fas fa-server me-2"></i>
@@ -89,6 +90,8 @@ $activeTab = $_GET['tab'] ?? 'system';
                     <?php endif; ?>
                 </div>
             </div>
+
+
             <div class="card-body p-0">
                 <?php if (!$systemLogData['exists']): ?>
                     <div class="text-center text-muted py-5">
@@ -139,12 +142,14 @@ $activeTab = $_GET['tab'] ?? 'system';
                                 <i class="fas fa-trash-alt me-1"></i>
                                 <?php echo __('admin_logs_clear'); ?>
                             </button>
-                            <a href="?action=logs&download=system" 
-                               class="btn btn-sm btn-success"
-                               title="<?php echo __('admin_logs_download'); ?>">
-                                <i class="fas fa-download me-1"></i>
-                                <?php echo __('admin_logs_download'); ?>
-                            </a>
+
+<a href="?action=log_download&download=system"
+   class="btn btn-sm btn-success"
+   title="<?php echo __('admin_logs_download'); ?>">
+    <i class="fas fa-download me-1"></i>
+    <?php echo __('admin_logs_download'); ?>
+</a>
+
                         </div>
                     </div>
                 </div>
@@ -247,12 +252,14 @@ $activeTab = $_GET['tab'] ?? 'system';
                                 <i class="fas fa-trash-alt me-1"></i>
                                 <?php echo __('admin_logs_clear'); ?>
                             </button>
-                            <a href="?action=logs&download=scanner" 
-                               class="btn btn-sm btn-success"
-                               title="<?php echo __('admin_logs_download'); ?>">
-                                <i class="fas fa-download me-1"></i>
-                                <?php echo __('admin_logs_download'); ?>
-                            </a>
+
+<a href="?action=log_download&download=scanner"
+   class="btn btn-sm btn-success"
+   title="<?php echo __('admin_logs_download'); ?>">
+    <i class="fas fa-download me-1"></i>
+    <?php echo __('admin_logs_download'); ?>
+</a>
+
                         </div>
                     </div>
                 </div>
@@ -333,12 +340,13 @@ $activeTab = $_GET['tab'] ?? 'system';
                                 <i class="fas fa-trash-alt me-1"></i>
                                 <?php echo __('admin_logs_clear'); ?>
                             </button>
-                            <a href="?action=logs&download=php" 
-                               class="btn btn-sm btn-success"
-                               title="<?php echo __('admin_logs_download'); ?>">
-                                <i class="fas fa-download me-1"></i>
-                                <?php echo __('admin_logs_download'); ?>
-                            </a>
+<a href="?action=log_download&download=php"
+   class="btn btn-sm btn-success"
+   title="<?php echo __('admin_logs_download'); ?>">
+    <i class="fas fa-download me-1"></i>
+    <?php echo __('admin_logs_download'); ?>
+</a>
+
                         </div>
                     </div>
                 </div>
@@ -370,7 +378,7 @@ function clearLog(logType) {
         default:
             confirmMsg = '<?php echo __('admin_logs_clear_confirm'); ?>';
     }
-    
+
     if (confirm(confirmMsg)) {
         document.getElementById('clearLogType').value = logType;
         document.getElementById('clearLogForm').submit();

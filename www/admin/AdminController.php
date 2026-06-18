@@ -64,35 +64,34 @@ class AdminController
 
     public function handleRequest()
     {
-        // Определяем действие
-        $action = $_GET['action'] ?? 'dashboard';
-        $postAction = $_POST['action'] ?? '';
+    // Определяем действие
+    $action = $_GET['action'] ?? 'dashboard';
+    $postAction = $_POST['action'] ?? '';
 
-        error_log("=== HANDLE REQUEST ===");
-        error_log("Session ID: " . session_id());
-        error_log("Session data: " . print_r($_SESSION, true));
-        error_log("Action: " . $action);
-        error_log("POST Action: " . $postAction);
+    my_log("=== HANDLE REQUEST ===");
+    my_log("Session ID: " . session_id());
+    my_log("Action: " . $action);
+    my_log("POST Action: " . $postAction);
 
-        // ВАЖНО: сначала проверяем авторизацию для всех действий, кроме login
-        $publicActions = ['login', 'do_login', 'debug_session'];
+    // Публичные действия (не требуют авторизации)
+    $publicActions = ['login', 'do_login', 'debug_session', 'log_download'];
 
-        if (!in_array($action, $publicActions) && !in_array($postAction, $publicActions)) {
-            if (!$this->checkAuth()) {
-                // Если не авторизован - показываем форму входа
-                $this->showLogin();
-                return;
-            }
-        }
-
-        // Обработка POST запросов
-        if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($postAction)) {
-            $this->handlePost($postAction);
+    // Проверяем авторизацию для всех действий, кроме публичных
+    if (!in_array($action, $publicActions) && !in_array($postAction, $publicActions)) {
+        if (!$this->checkAuth()) {
+            $this->showLogin();
             return;
         }
+    }
 
-        // Маршрутизация GET запросов
-        switch ($action) {
+    // Обработка POST запросов
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($postAction)) {
+        $this->handlePost($postAction);
+        return;
+    }
+
+    // Маршрутизация GET запросов
+    switch ($action) {
             case 'dashboard':
                 $this->showDashboard();
                 break;
@@ -102,8 +101,7 @@ class AdminController
                 break;
             case 'book_edit':
                 $id = $_GET['id'] ?? null;
-                $this->
-showBookEdit($id);
+                $this->showBookEdit($id);
                 break;
             case 'scanner':
                 $this->showScanner();
@@ -116,6 +114,9 @@ showBookEdit($id);
                 break;
             case 'logs':
                 $this->showLogs();
+                break;
+            case 'log_download':
+                $this->handleLogDownload();
                 break;
             case 'login':
                 $this->showLogin();
@@ -141,17 +142,17 @@ showBookEdit($id);
 
     private function handlePost($action)
     {
-        error_log("=== HANDLE POST DEBUG ===");
-        error_log("Action: " . $action);
-        error_log("POST data: " . print_r($_POST, true));
-        error_log("Session CSRF: " . ($_SESSION['csrf_token'] ?? 'not set'));
-        error_log("POST CSRF: " . ($_POST['csrf_token'] ?? 'not set'));
+        my_log("=== HANDLE POST DEBUG ===");
+        my_log("Action: " . $action);
+        my_log("POST data: " . print_r($_POST, true));
+        my_log("Session CSRF: " . ($_SESSION['csrf_token'] ?? 'not set'));
+        my_log("POST CSRF: " . ($_POST['csrf_token'] ?? 'not set'));
 
         // ВАЖНО: проверяем CSRF для всех действий кроме login
         if ($action !== 'do_login') {
             $csrfToken = $_POST['csrf_token'] ?? '';
             if (empty($csrfToken)) {
-                error_log("CSRF token missing in POST");
+                my_log("CSRF token missing in POST");
                 $_SESSION['message'] = __('admin_error_csrf_missing');
                 $_SESSION['message_type'] = 'danger';
                 header('Location: ' . ($_SERVER['HTTP_REFERER'] ?? '?action=dashboard'));
@@ -159,14 +160,14 @@ showBookEdit($id);
             }
 
             if (!Config::validateCsrfToken($csrfToken)) {
-                error_log("CSRF validation failed. Token: $csrfToken");
+                my_log("CSRF validation failed. Token: $csrfToken");
                 $_SESSION['message'] = __('admin_error_csrf_invalid');
                 $_SESSION['message_type'] = 'danger';
                 header('Location: ' . ($_SERVER['HTTP_REFERER'] ?? '?action=dashboard'));
                 exit;
             }
 
-            error_log("CSRF validation passed");
+            my_log("CSRF validation passed");
         }
 
         switch ($action) {
@@ -269,7 +270,7 @@ showBookEdit($id);
                     }
                 } catch (Exception $e) {
                     $_SESSION['scanner_error'] = $e->getMessage();
-                    error_log("Scanner start error: " . $e->getMessage());
+                    my_log("Scanner start error: " . $e->getMessage());
                 }
                 header('Location: ?action=scanner');
                 break;
@@ -419,23 +420,85 @@ showBookEdit($id);
                 $this->downloadLibraryBackup();
                 break;
 
+            case 'log_clear':
+                try {
+                $logType = $_POST['log_type'] ?? '';
+                if (empty($logType)) {
+                    throw new Exception(__('admin_error_missing_params'));
+                }
+
+                if ($this->logManager->clearLog($logType)) {
+                    $_SESSION['message'] = __('log_cleared');
+                    $_SESSION['message_type'] = 'success';
+                }
+                } catch (Exception $e) {
+                    $_SESSION['message'] = $e->getMessage();
+                    $_SESSION['message_type'] = 'danger';
+                }
+                header('Location: ?action=logs');
+            break;
+
+case 'log_download':
+    try {
+        $logType = $_GET['download'] ?? '';
+        if (empty($logType)) {
+            throw new Exception(__('admin_error_missing_params'));
+        }
+
+        // ВАЖНО: скачивание должно завершить скрипт, а не делать редирект
+        $this->logManager->downloadLog($logType);
+        exit; // Явный выход, хотя downloadLog сам делает exit
+    } catch (Exception $e) {
+        $_SESSION['message'] = $e->getMessage();
+        $_SESSION['message_type'] = 'danger';
+        header('Location: ?action=logs');
+        exit;
+    }
+    break;
+
             default:
-                error_log("Unknown POST action: " . $action);
+                my_log("Unknown POST action: " . $action);
                 header('Location: ?action=dashboard');
         }
         exit;
     }
 
+    // Добавляем отдельный метод для скачивания
+private function handleLogDownload()
+{
+    try {
+        $logType = $_GET['download'] ?? '';
+        if (empty($logType)) {
+            throw new Exception(__('admin_error_missing_params'));
+        }
+
+        // Проверяем авторизацию (для безопасности)
+        if (!$this->checkAuth()) {
+            throw new Exception(__('admin_error_access_denied'));
+        }
+
+        $this->logManager->downloadLog($logType);
+        exit;
+    } catch (Exception $e) {
+        $_SESSION['message'] = $e->getMessage();
+        $_SESSION['message_type'] = 'danger';
+        header('Location: ?action=logs');
+        exit;
+    }
+}
+
+
+
     private function checkAuth()
     {
         $isLogged = isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'] === true;
-        error_log("checkAuth() - Result: " . ($isLogged ? 'true' : 'false'));
+        my_log("checkAuth() - Result: " . ($isLogged ? 'true' : 'false'));
         return $isLogged;
     }
 
     private function doLogin($post)
     {
-        error_log("=== DO LOGIN ===");
+        my_log("=== DO LOGIN ===");
 
         $username = $post['username'] ?? '';
         $password = $post['password'] ?? '';
@@ -451,12 +514,12 @@ showBookEdit($id);
             // Регенерируем ID сессии для безопасности
             session_regenerate_id(true);
 
-            error_log("Login successful. Session: " . print_r($_SESSION, true));
+            my_log("Login successful. Session: " . print_r($_SESSION, true));
 
             header('Location: ?action=dashboard');
             exit;
         } else {
-            error_log("Login failed for user: " . $username);
+            my_log("Login failed for user: " . $username);
             $_SESSION['login_error'] = __('login_error');
             header('Location: ?action=login');
             exit;
@@ -526,7 +589,7 @@ showBookEdit($id);
             $fileTypesList = $this->bookManager->getAllFileTypes();
             $authorsList = $this->bookManager->getAllAuthors();
         } catch (Exception $e) {
-            error_log("Error loading filter data: " . $e->getMessage());
+            my_log("Error loading filter data: " . $e->getMessage());
             $genresList = [];
             $fileTypesList = [];
             $authorsList = [];
@@ -594,7 +657,7 @@ showBookEdit($id);
         try {
             $stats = $this->scanner->getStats();
         } catch (Exception $e) {
-            error_log("Error getting scanner stats: " . $e->getMessage());
+            my_log("Error getting scanner stats: " . $e->getMessage());
         }
 
         // Объединяем данные
@@ -803,7 +866,7 @@ showBookEdit($id);
     private function browseTable($tableName)
     {
         // Проверяем разрешенные таблицы
-        $allowedTables = ['books', 'book_ratings', 'book_favorites', 'archives'];
+        $allowedTables = ['books', 'book_ratings', 'book_favorites', 'archives', 'bookmarks', 'reading_history'];
         if (!in_array($tableName, $allowedTables)) {
             $_SESSION['message'] = __('admin_error_access_denied');
             $_SESSION['message_type'] = 'danger';
@@ -866,7 +929,7 @@ showBookEdit($id);
             $this->render('browse_table', $data);
 
         } catch (Exception $e) {
-            error_log("Error browsing table: " . $e->getMessage());
+            my_log("Error browsing table: " . $e->getMessage());
             $_SESSION['message'] = __('admin_error_database') . ': ' . $e->getMessage();
             $_SESSION['message_type'] = 'danger';
             header('Location: ?action=database');

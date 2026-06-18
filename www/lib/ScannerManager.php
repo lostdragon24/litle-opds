@@ -73,7 +73,7 @@ class ScannerManager
             return trim(substr($output, 0, 50));
 
         } catch (Exception $e) {
-            error_log("Error getting scanner version: " . $e->getMessage());
+            my_log("Error getting scanner version: " . $e->getMessage());
             return null;
         }
     }
@@ -138,7 +138,7 @@ class ScannerManager
                 return $this->createMysqlDatabase($dbConfig);
             }
         } catch (Exception $e) {
-            error_log("Error creating database: " . $e->getMessage());
+            my_log("Error creating database: " . $e->getMessage());
             return [
                 'success' => false,
                 'message' => __('scanner_error_create_db') . ': ' . $e->getMessage()
@@ -187,31 +187,31 @@ class ScannerManager
 
     public function start($background = true, $mode = 'normal')
     {
-        error_log("=== SCANNER START ===");
-        error_log("Mode: $mode, Background: " . ($background ? 'yes' : 'no'));
-        error_log("Scanner path: " . $this->scannerPath);
-        error_log("Config path: " . $this->configPath);
+        my_log("=== SCANNER START ===");
+        my_log("Mode: $mode, Background: " . ($background ? 'yes' : 'no'));
+        my_log("Scanner path: " . $this->scannerPath);
+        my_log("Config path: " . $this->configPath);
 
         if (!$this->isAvailable()) {
-            error_log("Scanner not available at: " . $this->scannerPath);
+            my_log("Scanner not available at: " . $this->scannerPath);
             throw new Exception(sprintf(__('scanner_error_not_available'), $this->scannerPath));
         }
 
         if ($this->isRunning()) {
             $pid = $this->getPid();
-            error_log("Scanner already running with PID: " . $pid);
+            my_log("Scanner already running with PID: " . $pid);
             throw new Exception(sprintf(__('scanner_error_already_running'), $pid));
         }
 
         $this->generateScannerConfig();
 
         if (!file_exists($this->configPath)) {
-            error_log("Failed to create scanner config at: " . $this->configPath);
+            my_log("Failed to create scanner config at: " . $this->configPath);
             throw new Exception(__('scanner_error_config_failed'));
         }
 
         if (!is_executable($this->scannerPath)) {
-            error_log("Scanner binary is not executable: " . $this->scannerPath);
+            my_log("Scanner binary is not executable: " . $this->scannerPath);
             throw new Exception(__('scanner_error_not_executable'));
         }
 
@@ -225,7 +225,7 @@ class ScannerManager
                 $inpxFile = $this->findInpxFile(Config::getBooksDir());
                 if ($inpxFile) {
                     $cmd .= ' --inpx=' . escapeshellarg($inpxFile);
-                    error_log("Using INPX file: " . $inpxFile);
+                    my_log("Using INPX file: " . $inpxFile);
                 }
                 break;
             case 'force':
@@ -233,49 +233,49 @@ class ScannerManager
                 break;
         }
 
-        error_log("Command: " . $cmd);
+        my_log("Command: " . $cmd);
 
         if ($background) {
             if (strncasecmp(PHP_OS, 'WIN', 3) == 0) {
                 $cmd = 'start /B ' . $cmd . ' > NUL 2>&1';
                 pclose(popen($cmd, 'r'));
                 $pid = null;
-                error_log("Started in background on Windows");
+                my_log("Started in background on Windows");
             } else {
                 $cmd = 'nohup ' . $cmd . ' >> ' . escapeshellarg($this->logFile) . ' 2>&1 & echo $!';
-                error_log("Executing: " . $cmd);
+                my_log("Executing: " . $cmd);
 
                 $output = shell_exec($cmd);
-                error_log("Shell exec output: " . ($output ?: 'empty'));
+                my_log("Shell exec output: " . ($output ?: 'empty'));
 
                 if ($output) {
                     $pid = trim($output);
 
 
-                    error_log("=== SCANNER DEBUG ===");
-                    error_log("Lock file path: " . $this->lockFile);
-                    error_log("Lock dir writable: " . (is_writable(dirname($this->lockFile)) ? 'yes' : 'no'));
-                    error_log("Command: " . $cmd);
-                    error_log("Shell exec output: " . ($output ?? 'null'));
+                    my_log("=== SCANNER DEBUG ===");
+                    my_log("Lock file path: " . $this->lockFile);
+                    my_log("Lock dir writable: " . (is_writable(dirname($this->lockFile)) ? 'yes' : 'no'));
+                    my_log("Command: " . $cmd);
+                    my_log("Shell exec output: " . ($output ?? 'null'));
 
                     if ($output) {
                         $pid = trim($output);
-                        error_log("Got PID: " . $pid);
+                        my_log("Got PID: " . $pid);
 
                         if (file_put_contents($this->lockFile, $pid)) {
-                            error_log("Lock file created successfully");
+                            my_log("Lock file created successfully");
                         } else {
-                            error_log("FAILED to create lock file: " . $this->lockFile);
-                            error_log("Error: " . error_get_last()['message'] ?? 'unknown');
+                            my_log("FAILED to create lock file: " . $this->lockFile);
+                            my_log("Error: " . error_get_last()['message'] ?? 'unknown');
                         }
                     }
 
                     file_put_contents($this->lockFile, $pid);
-                    error_log("Process started with PID: " . $pid);
+                    my_log("Process started with PID: " . $pid);
 
                     $this->log(sprintf(__('scanner_log_started'), $mode, $pid));
                 } else {
-                    error_log("Failed to get PID from shell_exec");
+                    my_log("Failed to get PID from shell_exec");
                 }
             }
 
@@ -290,8 +290,8 @@ class ScannerManager
             $returnCode = 0;
             exec($cmd . ' 2>&1', $output, $returnCode);
 
-            error_log("Return code: " . $returnCode);
-            error_log("Output: " . implode("\n", $output));
+            my_log("Return code: " . $returnCode);
+            my_log("Output: " . implode("\n", $output));
 
             $this->log(sprintf(__('scanner_log_completed'), $mode, $returnCode));
 
@@ -413,7 +413,7 @@ class ScannerManager
             ];
 
         } catch (Exception $e) {
-            error_log("Error getting scanner stats: " . $e->getMessage());
+            my_log("Error getting scanner stats: " . $e->getMessage());
             return [
                 'total_books' => 0,
                 'archives_count' => 0,
@@ -595,7 +595,7 @@ class ScannerManager
         file_put_contents($this->configPath, $content);
         chmod($this->configPath, 0600);
 
-        error_log("Generated scanner config with books_dir: " . $booksDir);
+        my_log("Generated scanner config with books_dir: " . $booksDir);
     }
 
     private function createSqliteDatabase($dbConfig)
@@ -695,7 +695,7 @@ class ScannerManager
                 }
             }
         } catch (Exception $e) {
-            error_log("Error checking database exists: " . $e->getMessage());
+            my_log("Error checking database exists: " . $e->getMessage());
             return false;
         }
     }
@@ -723,7 +723,7 @@ class ScannerManager
                 return $stmt->fetch() !== false;
             }
         } catch (Exception $e) {
-            error_log("Error checking tables exist: " . $e->getMessage());
+            my_log("Error checking tables exist: " . $e->getMessage());
             return false;
         }
     }

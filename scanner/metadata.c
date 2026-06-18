@@ -158,16 +158,16 @@ BookMeta *parse_metadata(const char *filepath, const char *file_type) {
   }
 
   // Инициализируем все поля
-  meta->title = NULL;
-  meta->author = NULL;
-  meta->genre = NULL;
-  meta->series = NULL;
-  meta->language = NULL;
-  meta->publisher = NULL;
-  meta->description = NULL;
-  meta->file_size = 0;
-  meta->series_number = 0;
-  meta->year = 0;
+    meta->title = NULL;
+    meta->author = NULL;
+    meta->genre = NULL;
+    meta->series = NULL;
+    meta->language = NULL;
+    meta->publisher = NULL;
+    meta->description = NULL;
+    meta->file_size = 0;
+    meta->series_number = 0;
+    meta->year = 0;
 
   if (strcasecmp(file_type, "fb2") == 0) {
     BookMeta *fb2_meta = parse_fb2(filepath);
@@ -227,6 +227,17 @@ BookMeta *parse_metadata(const char *filepath, const char *file_type) {
           meta->publisher = strdup(fb2_meta->publisher);
         }
       }
+
+
+            if (fb2_meta->description) {
+                int encoding = detect_encoding(fb2_meta->description);
+                if (encoding == 2) {
+                    meta->description = convert_string_encoding(fb2_meta->description, "WINDOWS-1251", "UTF-8");
+                } else {
+                    meta->description = strdup(fb2_meta->description);
+                }
+               // printf("DEBUG: Copied description to meta: %s\n", meta->description ? meta->description : "(null)");
+            }
 
       meta->series_number = fb2_meta->series_number;
       meta->year = fb2_meta->year;
@@ -300,149 +311,167 @@ BookMeta *parse_metadata(const char *filepath, const char *file_type) {
 }
 
 BookMeta *parse_fb2(const char *filepath) {
-  BookMeta *meta = calloc(1, sizeof(BookMeta));
-  if (!meta)
-    return NULL;
+    BookMeta *meta = calloc(1, sizeof(BookMeta));
+    if (!meta)
+        return NULL;
 
-  char *content = read_file_content(filepath);
-  if (!content) {
-    free_book_meta(meta);
-    return NULL;
-  }
+    char *content = read_file_content(filepath);
+    if (!content) {
+        free_book_meta(meta);
+        return NULL;
+    }
 
-  int content_encoding = detect_encoding(content);
-  char *converted_content = NULL;
-  char *content_to_parse = content;
+    int content_encoding = detect_encoding(content);
+    char *converted_content = NULL;
+    char *content_to_parse = content;
 
-  if (content_encoding == 2) {
-    converted_content = convert_encoding(content, "WINDOWS-1251", "UTF-8");
+    if (content_encoding == 2) {
+        converted_content = convert_encoding(content, "WINDOWS-1251", "UTF-8");
+        if (converted_content) {
+            content_to_parse = converted_content;
+        }
+    }
+
+    meta->title = extract_xml_tag_content(content_to_parse, "book-title");
+    meta->author = extract_fb2_author(content_to_parse);
+    meta->genre = extract_xml_tag_content(content_to_parse, "genre");
+    meta->series = extract_fb2_sequence(content_to_parse);
+    meta->series_number = extract_fb2_sequence_number(content_to_parse);
+
+    char *date = extract_xml_tag_content(content_to_parse, "date");
+    if (date) {
+        char *year_ptr = date;
+        while (*year_ptr) {
+            if (isdigit((unsigned char)*year_ptr) &&
+                isdigit((unsigned char)*(year_ptr + 1)) &&
+                isdigit((unsigned char)*(year_ptr + 2)) &&
+                isdigit((unsigned char)*(year_ptr + 3))) {
+                meta->year = atoi(year_ptr);
+                break;
+            }
+            year_ptr++;
+        }
+        free(date);
+    }
+
+    meta->language = extract_xml_tag_content(content_to_parse, "lang");
+    meta->publisher = extract_xml_tag_content(content_to_parse, "publisher");
+
+    // ===== ИСПРАВЛЕНО: РАСКОММЕНТИРОВАНО =====
+    char *annotation = extract_xml_tag_content(content_to_parse, "annotation");
+    if (annotation) {
+        // Ограничиваем длину до 10000 символов (вместо 1000)
+        if (strlen(annotation) > 10000) {
+            char *short_desc = strndup(annotation, 10000);
+            if (short_desc) {
+                meta->description = short_desc;
+                free(annotation);
+            } else {
+                meta->description = annotation;
+            }
+        } else {
+            meta->description = annotation;
+        }
+        //printf("DEBUG: INSERT annotation: %s\n", meta->description ? meta->description : "(null)");
+    } else {
+        //printf("DEBUG: INSERT annotation: (null)\n");
+    }
+
+    // Fallback для title если не найден
+    if (!meta->title) {
+        const char *filename = strrchr(filepath, '/');
+        filename = filename ? filename + 1 : filepath;
+        const char *dot = strrchr(filename, '.');
+        if (dot) {
+            meta->title = strndup(filename, dot - filename);
+        } else {
+            meta->title = strdup(filename);
+        }
+    }
+
+    // Fallback для author если не найден
+    if (!meta->author) {
+        meta->author = strdup("Unknown Author");
+    }
+
+    free(content);
     if (converted_content) {
-      content_to_parse = converted_content;
+        free(converted_content);
     }
-  }
 
-  meta->title = extract_xml_tag_content(content_to_parse, "book-title");
-  meta->author = extract_fb2_author(content_to_parse);
-  meta->genre = extract_xml_tag_content(content_to_parse, "genre");
-  meta->series = extract_fb2_sequence(content_to_parse);
-  meta->series_number = extract_fb2_sequence_number(content_to_parse);
-
-  char *date = extract_xml_tag_content(content_to_parse, "date");
-  if (date) {
-    char *year_ptr = date;
-    while (*year_ptr) {
-      if (isdigit((unsigned char)*year_ptr) &&
-          isdigit((unsigned char)*(year_ptr + 1)) &&
-          isdigit((unsigned char)*(year_ptr + 2)) &&
-          isdigit((unsigned char)*(year_ptr + 3))) {
-        meta->year = atoi(year_ptr);
-        break;
-      }
-      year_ptr++;
-    }
-    free(date);
-  }
-
-  meta->language = extract_xml_tag_content(content_to_parse, "lang");
-  meta->publisher = extract_xml_tag_content(content_to_parse, "publisher");
-
-  char *annotation = extract_xml_tag_content(content_to_parse, "annotation");
-  if (annotation) {
-    if (strlen(annotation) > 1000) {
-      meta->description = strndup(annotation, 1000);
-      free(annotation);
-    } else {
-      meta->description = annotation;
-    }
-  }
-
-  // Fallback для title если не найден
-  if (!meta->title) {
-    const char *filename = strrchr(filepath, '/');
-    filename = filename ? filename + 1 : filepath;
-    const char *dot = strrchr(filename, '.');
-    if (dot) {
-      meta->title = strndup(filename, dot - filename);
-    } else {
-      meta->title = strdup(filename);
-    }
-  }
-
-  // Fallback для author если не найден
-  if (!meta->author) {
-    meta->author = strdup("Unknown Author");
-  }
-
-  free(content);
-  if (converted_content) {
-    free(converted_content);
-  }
-
-  return meta;
+    return meta;
 }
 
 BookMeta *parse_fb2_from_memory(const char *content, size_t content_size) {
-  BookMeta *meta = calloc(1, sizeof(BookMeta));
-  if (!meta)
-    return NULL;
+    BookMeta *meta = calloc(1, sizeof(BookMeta));
+    if (!meta)
+        return NULL;
 
-  char *content_copy = malloc(content_size + 1);
-  if (!content_copy) {
-    free_book_meta(meta);
-    return NULL;
-  }
-  memcpy(content_copy, content, content_size);
-  content_copy[content_size] = '\0';
-
-  int content_encoding = detect_encoding(content_copy);
-
-  char *converted_content = NULL;
-  if (content_encoding == 2) {
-    converted_content = convert_encoding(content_copy, "WINDOWS-1251", "UTF-8");
-  }
-
-  char *content_to_parse = converted_content ? converted_content : content_copy;
-
-  meta->title = extract_xml_tag_content(content_to_parse, "book-title");
-  meta->author = extract_fb2_author(content_to_parse);
-  meta->genre = extract_xml_tag_content(content_to_parse, "genre");
-  meta->series = extract_fb2_sequence(content_to_parse);
-  meta->series_number = extract_fb2_sequence_number(content_to_parse);
-
-  char *date = extract_xml_tag_content(content_to_parse, "date");
-  if (date) {
-    char *year_ptr = date;
-    while (*year_ptr) {
-      if (isdigit((unsigned char)*year_ptr) &&
-          isdigit((unsigned char)*(year_ptr + 1)) &&
-          isdigit((unsigned char)*(year_ptr + 2)) &&
-          isdigit((unsigned char)*(year_ptr + 3))) {
-        meta->year = atoi(year_ptr);
-        break;
-      }
-      year_ptr++;
+    char *content_copy = malloc(content_size + 1);
+    if (!content_copy) {
+        free_book_meta(meta);
+        return NULL;
     }
-    free(date);
-  }
+    memcpy(content_copy, content, content_size);
+    content_copy[content_size] = '\0';
 
-  meta->language = extract_xml_tag_content(content_to_parse, "lang");
-  meta->publisher = extract_xml_tag_content(content_to_parse, "publisher");
+    int content_encoding = detect_encoding(content_copy);
 
-  char *annotation = extract_xml_tag_content(content_to_parse, "annotation");
-  if (annotation) {
-    if (strlen(annotation) > 1000) {
-      meta->description = strndup(annotation, 1000);
-    } else {
-      meta->description = annotation;
+    char *converted_content = NULL;
+    if (content_encoding == 2) {
+        converted_content = convert_encoding(content_copy, "WINDOWS-1251", "UTF-8");
     }
-  }
 
-  free(content_copy);
-  if (converted_content) {
-    free(converted_content);
-  }
+    char *content_to_parse = converted_content ? converted_content : content_copy;
 
-  return meta;
+    meta->title = extract_xml_tag_content(content_to_parse, "book-title");
+    meta->author = extract_fb2_author(content_to_parse);
+    meta->genre = extract_xml_tag_content(content_to_parse, "genre");
+    meta->series = extract_fb2_sequence(content_to_parse);
+    meta->series_number = extract_fb2_sequence_number(content_to_parse);
+
+    char *date = extract_xml_tag_content(content_to_parse, "date");
+    if (date) {
+        char *year_ptr = date;
+        while (*year_ptr) {
+            if (isdigit((unsigned char)*year_ptr) &&
+                isdigit((unsigned char)*(year_ptr + 1)) &&
+                isdigit((unsigned char)*(year_ptr + 2)) &&
+                isdigit((unsigned char)*(year_ptr + 3))) {
+                meta->year = atoi(year_ptr);
+                break;
+            }
+            year_ptr++;
+        }
+        free(date);
+    }
+
+    meta->language = extract_xml_tag_content(content_to_parse, "lang");
+    meta->publisher = extract_xml_tag_content(content_to_parse, "publisher");
+
+    // ===== ИСПРАВЛЕНО: РАСКОММЕНТИРОВАНО =====
+    char *annotation = extract_xml_tag_content(content_to_parse, "annotation");
+    if (annotation) {
+        if (strlen(annotation) > 10000) {
+            char *short_desc = strndup(annotation, 10000);
+            if (short_desc) {
+                meta->description = short_desc;
+                free(annotation);
+            } else {
+                meta->description = annotation;
+            }
+        } else {
+            meta->description = annotation;
+        }
+        //printf("DEBUG: INSERT annotation from memory: %s\n", meta->description ? meta->description : "(null)");
+    }
+
+    free(content_copy);
+    if (converted_content) {
+        free(converted_content);
+    }
+
+    return meta;
 }
 
 char *extract_fb2_sequence(const char *xml) {
@@ -550,7 +579,43 @@ char *extract_xml_tag_content(const char *xml, const char *tag_name) {
 
   trim_string(content);
 
-  if (strcmp(tag_name, "annotation") == 0) {
+    if (strcmp(tag_name, "annotation") == 0) {
+     // printf("DEBUG: Found annotation content: %s\n", content);
+        // Пробуем найти <description><title-info><annotation>
+        char *desc_start = strstr(xml, "<description>");
+        if (desc_start) {
+            char *title_info = strstr(desc_start, "<title-info>");
+            if (title_info) {
+                char *ann = strstr(title_info, "<annotation>");
+                if (ann) {
+                    ann += strlen("<annotation>");
+                    char *ann_end = strstr(ann, "</annotation>");
+                    if (ann_end) {
+                        size_t len = ann_end - ann;
+                        char *content = malloc(len + 1);
+                        if (content) {
+                            strncpy(content, ann, len);
+                            content[len] = '\0';
+                            trim_string(content);
+                            //printf("DEBUG: Cleaned annotation: %s\n", content);
+
+                            char *cleaned = clean_html_tags(content);
+                              if (cleaned) {
+                                free(content);
+                                content = cleaned;
+                               // printf("DEBUG: Cleaned annotation: %s\n", cleaned);
+                              }
+
+                            return content;
+
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (strcmp(tag_name, "publisher") == 0) {
     char *cleaned = clean_html_tags(content);
     if (cleaned) {
       free(content);
@@ -594,40 +659,40 @@ char *extract_fb2_author(const char *xml) {
 }
 
 void free_book_meta(BookMeta *meta) {
-  if (!meta) return;
+    if (!meta) return;
 
-  // Безопасное освобождение всех полей
-  if (meta->title) {
-    free(meta->title);
-    meta->title = NULL;
-  }
-  if (meta->author) {
-    free(meta->author);
-    meta->author = NULL;
-  }
-  if (meta->genre) {
-    free(meta->genre);
-    meta->genre = NULL;
-  }
-  if (meta->series) {
-    free(meta->series);
-    meta->series = NULL;
-  }
-  if (meta->language) {
-    free(meta->language);
-    meta->language = NULL;
-  }
-  if (meta->publisher) {
-    free(meta->publisher);
-    meta->publisher = NULL;
-  }
-  if (meta->description) {
-    free(meta->description);
-    meta->description = NULL;
-  }
-
-  // Не освобождаем саму структуру, так как она может быть на стеке
-  // free(meta);  // НЕ ДЕЛАЙТЕ ЭТО!
+    if (meta->title) {
+        free(meta->title);
+        meta->title = NULL;
+    }
+    if (meta->author) {
+        free(meta->author);
+        meta->author = NULL;
+    }
+    if (meta->genre) {
+        free(meta->genre);
+        meta->genre = NULL;
+    }
+    if (meta->series) {
+        free(meta->series);
+        meta->series = NULL;
+    }
+    if (meta->language) {
+        free(meta->language);
+        meta->language = NULL;
+    }
+    if (meta->publisher) {
+        free(meta->publisher);
+        meta->publisher = NULL;
+    }
+    if (meta->description) {  // <-- ЭТО ДОБАВИТЬ
+        free(meta->description);
+        meta->description = NULL;
+    }
+    if (meta->file_hash) {
+        free(meta->file_hash);
+        meta->file_hash = NULL;
+    }
 }
 
 BookMeta *parse_epub(const char *filepath) {

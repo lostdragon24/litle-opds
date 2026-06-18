@@ -26,7 +26,7 @@ class Database
         if (!$checker->checkDatabase()) {
             $this->isAvailable = false;
             $this->lastError = $checker->getErrorMessage();
-            error_log("Database unavailable: " . $this->lastError);
+            my_log("Database unavailable: " . $this->lastError);
             return;
         }
 
@@ -77,11 +77,11 @@ class Database
         } catch (PDOException $e) {
             $this->isAvailable = false;
             $this->lastError = __('error_db_connection') . ': ' . $e->getMessage();
-            error_log($this->lastError);
+            my_log($this->lastError);
         } catch (Exception $e) {
             $this->isAvailable = false;
             $this->lastError = $e->getMessage();
-            error_log($this->lastError);
+            my_log($this->lastError);
         }
     }
 
@@ -122,7 +122,7 @@ class Database
             $count = $result['count'] ?? 0;
             //    }
         } catch (Exception $e) {
-            error_log("Error getting total books count: " . $e->getMessage());
+            my_log("Error getting total books count: " . $e->getMessage());
             $count = 0;
         }
 
@@ -145,14 +145,14 @@ class Database
     private function executeQuery($sql, $params = [])
     {
         if (!$this->isAvailable()) {
-            error_log("Query skipped - database unavailable: " . $sql);
+            my_log("Query skipped - database unavailable: " . $sql);
             return new EmptyPDOStatement();
         }
 
         $this->queryCount++;
 
         if (Config::isQuerylogging() && Config::isDevelopment()) {
-            error_log("DB Query: " . $sql . " | Params: " . json_encode($params));
+            my_log("DB Query: " . $sql . " | Params: " . json_encode($params));
         }
 
         $startTime = microtime(true);
@@ -177,13 +177,13 @@ class Database
 
             $queryTime = microtime(true) - $startTime;
             if ($queryTime > 0.5 && Config::isQuerylogging()) {
-                error_log("Slow query (" . round($queryTime, 3) . "s): " . $sql);
+                my_log("Slow query (" . round($queryTime, 3) . "s): " . $sql);
             }
 
             return $stmt;
 
         } catch (PDOException $e) {
-            error_log("Query failed: " . $sql . " | Error: " . $e->getMessage());
+            my_log("Query failed: " . $sql . " | Error: " . $e->getMessage());
             throw new Exception(__('error_db_query'));
         }
     }
@@ -255,7 +255,7 @@ class Database
 
             return $stmt->fetchAll();
         } catch (Exception $e) {
-            error_log("Fulltext search failed, falling back to LIKE: " . $e->getMessage());
+            my_log("Fulltext search failed, falling back to LIKE: " . $e->getMessage());
             return $this->searchBooksLike($query, $field, $offset, $perPage);
         }
     }
@@ -754,7 +754,7 @@ public function refreshCollectionStats()
 
             return $rating;
         } catch (Exception $e) {
-            error_log("Error getting book rating: " . $e->getMessage());
+            my_log("Error getting book rating: " . $e->getMessage());
             return ['votes' => 0, 'average' => 0, 'average_rounded' => 0, 'distribution' => [0,0,0,0,0]];
         }
     }
@@ -853,7 +853,7 @@ public function refreshCollectionStats()
 public function rateBook($bookId, $rating, $userIp, $csrfToken = null)
 {
     if (!Config::validateCsrfToken($csrfToken)) {
-        error_log("CSRF validation failed in rateBook. Token: " . ($csrfToken ?? 'null'));
+        my_log("CSRF validation failed in rateBook. Token: " . ($csrfToken ?? 'null'));
         throw new Exception('Invalid CSRF token');
     }
 
@@ -904,13 +904,13 @@ public function rateBook($bookId, $rating, $userIp, $csrfToken = null)
             PageCache::invalidateUserPages($userIp);
         }
 
-        error_log("Rating cache fully invalidated for book {$bookId}");
+        my_log("Rating cache fully invalidated for book {$bookId}");
         // =================================================
 
         return $result;
 
     } catch (Exception $e) {
-        error_log("Error in rateBook: " . $e->getMessage());
+        my_log("Error in rateBook: " . $e->getMessage());
         throw new Exception("Failed to rate book");
     }
 }
@@ -921,7 +921,7 @@ public function rateBook($bookId, $rating, $userIp, $csrfToken = null)
     public function toggleFavorite($bookId, $userIp, $csrfToken = null)
     {
         if (!Config::validateCsrfToken($csrfToken)) {
-            error_log("CSRF validation failed in toggleFavorite. Token: " . ($csrfToken ?? 'null'));
+            my_log("CSRF validation failed in toggleFavorite. Token: " . ($csrfToken ?? 'null'));
             throw new Exception('Invalid CSRF token');
         }
 
@@ -953,69 +953,10 @@ public function rateBook($bookId, $rating, $userIp, $csrfToken = null)
 
             return $result;
         } catch (Exception $e) {
-            error_log("Error in toggleFavorite: " . $e->getMessage());
+            my_log("Error in toggleFavorite: " . $e->getMessage());
             throw new Exception("Failed to toggle favorite");
         }
     }
-
-  /**
-     * Получить топ книг по рейтингу (оптимизированная версия).
-     */
-    public function getTopRatedBooks($limit = 100, $minVotes = 1)
-    {
-        $cacheKey = 'top_rated_optimized_'.$limit.'_'.$minVotes;
-
-        $cached = Cache::get($cacheKey, 'statistics');
-        if (null !== $cached) {
-            ++$this->cacheHits;
-
-            return $cached;
-        }
-        ++$this->cacheMisses;
-
-        $dbType = Config::getDbType();
-
-
-        if ($dbType === 'mysql') {
-            // MySQL оптимизация с подзапросом и использованием индексов
-            $sql = 'SELECT b.id, b.title, b.author, b.series, b.series_number,
-                           b.genre, b.file_type, b.added_date,
-                           COALESCE(r_stats.avg_rating, 0) as avg_rating,
-                           COALESCE(r_stats.votes_count, 0) as votes_count
-                    FROM books b
-                    STRAIGHT_JOIN (
-                        SELECT book_id, AVG(rating) as avg_rating, COUNT(*) as votes_count
-                        FROM book_ratings
-                        GROUP BY book_id
-                        HAVING COUNT(*) >= ?
-                    ) r_stats ON b.id = r_stats.book_id
-                    ORDER BY r_stats.avg_rating DESC, r_stats.votes_count DESC, b.title
-                    LIMIT ?';
-        } else {
-            // SQLite оптимизация
-            $sql = 'SELECT b.id, b.title, b.author, b.series, b.series_number,
-                           b.genre, b.file_type, b.added_date,
-                           IFNULL(r_stats.avg_rating, 0) as avg_rating,
-                           IFNULL(r_stats.votes_count, 0) as votes_count
-                    FROM books b
-                    LEFT JOIN (
-                        SELECT book_id, AVG(rating) as avg_rating, COUNT(*) as votes_count
-                        FROM book_ratings
-                        GROUP BY book_id
-                    ) r_stats ON b.id = r_stats.book_id
-                    WHERE r_stats.votes_count >= ?
-                    ORDER BY r_stats.avg_rating DESC, r_stats.votes_count DESC, b.title
-                    LIMIT ?';
-        }
-
-        $stmt = $this->executeQuery($sql, [$minVotes, $limit]);
-        $result = $stmt->fetchAll();
-
-        Cache::set($cacheKey, $result, 'statistics', 1800); // Кэш на 30 минут
-
-        return $result;
-    }
-
 
     /**
      * Создать ключ кэша
@@ -1264,11 +1205,11 @@ private function invalidateRatingBatches($bookId)
         }
 
         if ($deletedCount > 0 && Config::isDevelopment()) {
-            error_log("Invalidated {$deletedCount} rating batch keys for book {$bookId}");
+            my_log("Invalidated {$deletedCount} rating batch keys for book {$bookId}");
         }
 
     } catch (Exception $e) {
-        error_log("Error invalidating rating batches: " . $e->getMessage());
+        my_log("Error invalidating rating batches: " . $e->getMessage());
     }
 }
 
@@ -1287,7 +1228,7 @@ private function invalidateRatingBatchesByIndex($bookId)
             Cache::delete($batchKey);
         }
         Cache::delete($indexKey);
-        error_log("Invalidated all rating batches via index");
+        my_log("Invalidated all rating batches via index");
     }
 
     // Также инвалидируем по типу как fallback
@@ -1388,7 +1329,7 @@ public function getGenresWithCount($limit = 50)
         return $results;
 
     } catch (Exception $e) {
-        error_log("Error getting genres with count: " . $e->getMessage());
+        my_log("Error getting genres with count: " . $e->getMessage());
         return [];
     }
 }

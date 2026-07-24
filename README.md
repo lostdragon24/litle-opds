@@ -301,7 +301,7 @@ LIMIT 10;
 |!(https://raw.githubusercontent.com/lostdragon24/lopds/refs/heads/main/doc/book_read.png)            |Встроенная читалка - чтение прямо в браузере|
 |!(https://raw.githubusercontent.com/lostdragon24/lopds/refs/heads/main/doc/book_bokmark_and_citats.png)|Закладки и цитаты                           |
 |!(https://raw.githubusercontent.com/lostdragon24/lopds/refs/heads/main/doc/favorites.png)            |Избранное - личная коллекция                |
-|[https://raw.githubusercontent.com/lostdragon24/lopds/refs/heads/main/doc/ratings.png](https://raw.githubusercontent.com/lostdragon24/lopds/refs/heads/main/doc/ratings.png)|Система рейтингов - оценка книг             |
+|[Система рейтингов - оценка книг](https://raw.githubusercontent.com/lostdragon24/lopds/refs/heads/main/doc/ratings.png)|Система рейтингов - оценка книг             |
 |!(https://raw.githubusercontent.com/lostdragon24/lopds/refs/heads/main/doc/bookmarks.png)            |Система закладок - при онлайн чтении        |
 |!(https://raw.githubusercontent.com/lostdragon24/lopds/refs/heads/main/doc/citats.png)               |Цитаты - избранные цитаты...                |
 |!(https://raw.githubusercontent.com/lostdragon24/lopds/refs/heads/main/doc/stats.png)              |Статистика коллекции                        |

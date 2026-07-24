@@ -301,8 +301,8 @@ LIMIT 10;
 |![Встроенная читалка](https://raw.githubusercontent.com/lostdragon24/lopds/refs/heads/main/doc/book_read.png)            |Встроенная читалка - чтение прямо в браузере|
 |![Закладки и цитаты](https://raw.githubusercontent.com/lostdragon24/lopds/refs/heads/main/doc/book_bokmark_and_citats.png)|Закладки и цитаты                           |
 |![Избранное](https://raw.githubusercontent.com/lostdragon24/lopds/refs/heads/main/doc/favorites.png)            |Избранное - личная коллекция                |
-|[Система рейтингов - оценка книг](https://raw.githubusercontent.com/lostdragon24/lopds/refs/heads/main/doc/ratings.png)|Система рейтингов - оценка книг             |
-|!Система закладок](https://raw.githubusercontent.com/lostdragon24/lopds/refs/heads/main/doc/bookmarks.png)            |Система закладок - при онлайн чтении        |
+|![Система рейтингов - оценка книг](https://raw.githubusercontent.com/lostdragon24/lopds/refs/heads/main/doc/ratings.png)|Система рейтингов - оценка книг             |
+|![Система закладок](https://raw.githubusercontent.com/lostdragon24/lopds/refs/heads/main/doc/bookmarks.png)            |Система закладок - при онлайн чтении        |
 |![Цитаты](https://raw.githubusercontent.com/lostdragon24/lopds/refs/heads/main/doc/citats.png)               |Цитаты - избранные цитаты...                |
 |![Статистика](https://raw.githubusercontent.com/lostdragon24/lopds/refs/heads/main/doc/stats.png)              |Статистика коллекции                        |
 |![Главная страница - панели управления](https://raw.githubusercontent.com/lostdragon24/lopds/refs/heads/main/doc/admin_dashboard.png)      |Главная страница - панели управления        |

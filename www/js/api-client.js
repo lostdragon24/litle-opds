@@ -1,5 +1,5 @@
 
-// js/api-client.js
+// js/api-client.js - исправленная версия
 
 (function() {
     'use strict';

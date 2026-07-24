@@ -1,16 +1,23 @@
 <?php
-
 // change-language.php
 
-require_once __DIR__.'/lib/SessionManager.php';
-SessionManager::start(); // вместо session_start() с именем
-
-
-
-// Определяем, откуда пришли (админка или сайт)
+// Сначала определяем, из админки ли запрос
 $referer = $_SERVER['HTTP_REFERER'] ?? '';
 $isFromAdmin = strpos($referer, '/admin/') !== false;
 
+// Устанавливаем имя сессии ДО её запуска
+if ($isFromAdmin) {
+    session_name('ADMIN_SESSION');
+} else {
+    session_name('USER_SESSION');
+}
+
+// Теперь запускаем сессию
+require_once __DIR__.'/lib/SessionManager.php';
+require_once __DIR__.'/lib/SessionInitializer.php';
+
+SessionInitializer::initialize();
+SessionManager::start();
 
 error_log("=== change-language.php called ===");
 error_log("Referer: " . $referer);
@@ -37,6 +44,7 @@ if (isset($_POST['lang'])) {
     require_once __DIR__ . '/lib/Cache.php';
     require_once __DIR__ . '/lib/PageCache.php';
 
+
     // Очищаем кэш страниц
     PageCache::clear();
 
@@ -57,7 +65,6 @@ if (isset($_POST['lang'])) {
     $redirect = $referer ?: '/';
     my_log("Redirecting to: " . $redirect);
 
-    SessionManager::getCsrfToken();
     header('Location: ' . $redirect);
     exit;
 }

@@ -8,8 +8,14 @@ ARCH ?= $(shell uname -m)
 # Базовые флаги (безопасные для всех)
 CFLAGS = -Wall -Wextra -std=c99 -D_POSIX_C_SOURCE=200809L -D_GNU_SOURCE
 LDFLAGS =
-MYSQL_LIBS = -lmysqlclient
-MYSQL_INCLUDE = -I/usr/include/mysql -I/usr/include/mysql/mysql
+
+# Автоматическое определение флагов MySQL/MariaDB через mysql_config
+# Если утилиты нет в системе, сработает запасной вариант (fallback)
+MYSQL_CFLAGS := $(shell mysql_config --cflags 2>/dev/null || echo "-I/usr/include/mysql -I/usr/include/mysql/mysql")
+MYSQL_LIBS   := $(shell mysql_config --libs 2>/dev/null || echo "-lmysqlclient")
+
+# Добавляем полученные флаги компиляции к базовым CFLAGS
+CFLAGS += $(MYSQL_CFLAGS)
 
 # ============================================================================
 # ОПТИМИЗАЦИЯ ПО АРХИТЕКТУРЕ (БЕЗОПАСНЫЕ ФЛАГИ)
@@ -72,8 +78,8 @@ optimized: CFLAGS += -O3 -funroll-loops
 optimized: $(TARGET)
 
 # Сборка с LTO (требует GCC 5+)
-lto: CFLAGS += -O3 -flto -ffat-lto-objects
-lto: LDFLAGS += -flto
+lto: CFLAGS += -O3 -flto=auto -ffat-lto-objects
+lto: LDFLAGS += -flto=auto
 lto: $(TARGET)
 
 # Нативная оптимизация (только для текущей машины)
@@ -81,10 +87,10 @@ native: CFLAGS += -O3 -march=native -mtune=native
 native: $(TARGET)
 
 $(TARGET): $(OBJS)
-	$(CC) $(OBJS) -o $(TARGET) $(LDFLAGS) $(MYSQL_LIBS) $(LIBS)
+	$(CC) $(CFLAGS) $(EXTRA_CFLAGS) $(LDFLAGS) $(OBJS) -o $(TARGET) $(MYSQL_LIBS) $(LIBS)
 
 %.o: %.c
-	$(CC) $(CFLAGS) $(MYSQL_INCLUDE) -c $< -o $@
+	$(CC) $(CFLAGS) $(EXTRA_CFLAGS) $(MYSQL_INCLUDE) -c $< -o $@
 
 # ============================================================================
 # ОЧИСТКА
@@ -142,8 +148,9 @@ info:
 	@echo "  make check-flags  - проверить поддержку -march"
 
 check-flags:
-	@echo "Проверка поддержки -march=$(ARCH)..."
-	@$(CC) -march=$(ARCH) -E - </dev/null 2>&1 && echo "✅ Поддерживается" || echo "❌ Не поддерживается"
+	@echo "Проверка поддержки флагов $(ARCH_CFLAGS)..."
+	@$(CC) $(ARCH_CFLAGS) -E - </dev/null 2>&1 && echo "✅ Поддерживается" || echo "❌ Не поддерживается"
+
 
 help:
 	@echo "Доступные цели:"

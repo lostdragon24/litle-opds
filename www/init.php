@@ -9,15 +9,19 @@ require_once LOPDS_ROOT . '/config/config.php';
 // ЗАПУСКАЕМ СЕССИЮ С ПРАВИЛЬНЫМ ИМЕНЕМ
 // ============================================
 require_once LOPDS_ROOT . '/lib/SessionManager.php';
+require_once LOPDS_ROOT . '/lib/SessionInitializer.php';
+SessionInitializer::initialize();
+
+
 
 // Определяем, в админке мы или нет
-$isAdmin = strpos($_SERVER['SCRIPT_NAME'], '/admin/') !== false;
-
-if ($isAdmin) {
-    session_name('ADMIN_SESSION');
-} else {
-    session_name('USER_SESSION');
-}
+//$isAdmin = strpos($_SERVER['SCRIPT_NAME'], '/admin/') !== false;
+//
+//if ($isAdmin) {
+//    session_name('ADMIN_SESSION');
+//} else {
+//    session_name('USER_SESSION');
+//}
 
 
 // Определяем идентификатор устройства
@@ -64,6 +68,6 @@ if ($currentLang === 'ru') {
     setlocale(LC_TIME, 'en_US.UTF-8');
 }
 
-my_log("init.php - Is admin: " . ($isAdmin ? 'yes' : 'no'));
+//my_log("init.php - Is admin: " . ($isAdmin ? 'yes' : 'no'));
 my_log("init.php - Session name: " . session_name());
 my_log("init.php - Final current language: " . $currentLang);

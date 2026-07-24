@@ -202,11 +202,11 @@ if (isset($scanner) && method_exists($scanner, 'hasInpxFile')) {
                 <?php
                 // Получаем статистику из $status['stats']
                 $statsData = $status['stats'] ?? [];
-                $totalBooks = $statsData['total_books'] ?? 0;
-                $archivesCount = $statsData['archives_count'] ?? 0;
-                $lastScan = $statsData['last_scan'] ?? null;
-                $scansCount = $statsData['scans_count'] ?? 0;
-                ?>
+$totalBooks = $statsData['total_books'] ?? 0;
+$archivesCount = $statsData['archives_count'] ?? 0;
+$lastScan = $statsData['last_scan'] ?? null;
+$scansCount = $statsData['scans_count'] ?? 0;
+?>
                 
                 <table class="table table-borderless">
                     <tr>
@@ -404,8 +404,8 @@ if (isset($scanner) && method_exists($scanner, 'hasInpxFile')) {
                             <tr>
                                 <td class="font-monospace small">
                                     <?php
-                    // Подсветка строк
-                    $lineClass = '';
+    // Подсветка строк
+    $lineClass = '';
                             if (strpos($line, 'ERROR') !== false || strpos($line, 'Error') !== false) {
                                 $lineClass = 'text-danger';
                             } elseif (strpos($line, 'WARNING') !== false) {

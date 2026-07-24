@@ -53,7 +53,7 @@ if ($realCacheFile !== false && strpos($realCacheFile, $realCacheDir . DIRECTORY
 if (file_exists($cacheFile)) {
     // Дополнительная проверка: resolved path должен начинаться с cacheDir
     $realCacheFile = realpath($cacheFile);
-    
+
     if ($realCacheFile === false || strpos($realCacheFile, $cacheDir) !== 0) {
         serveDefaultCover($thumb);
         exit;

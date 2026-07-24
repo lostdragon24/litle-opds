@@ -171,8 +171,7 @@ char *find_config_file(void) {
   for (int i = 0; i < count && i < 16; i++) {
     if (access(possible_paths[i], R_OK) == 0) {
       fprintf(stderr, "Found config at: %s\n", possible_paths[i]);
-      return safe_strdup(
-          possible_paths[i]);
+      return safe_strdup(possible_paths[i]);
     }
   }
 
@@ -246,7 +245,11 @@ Config *read_config(const char *config_path) {
   config->scanner.log_file = NULL;
   config->scanner.rescan_unchanged = 0;
   config->scanner.enable_inpx = 0;
+  config->scanner.find_dup = 1;
   config->scanner.clear_database_inpx = 0;
+  config->scanner.num_workers = 4;
+  config->scanner.batch_size = 100;
+
   config->scanner.hash_algorithm = safe_strdup("md5");
   if (!config->scanner.hash_algorithm) {
     fclose(file);
@@ -351,6 +354,14 @@ Config *read_config(const char *config_path) {
         config->scanner.clear_database_inpx =
             (strcasecmp(value, "yes") == 0 || strcasecmp(value, "true") == 0 ||
              strcmp(value, "1") == 0);
+      } else if (strcmp(key, "batch_size") == 0) {
+        config->scanner.batch_size = atoi(value);
+      } else if (strcmp(key, "num_workers") == 0) {
+        config->scanner.num_workers = atoi(value);
+      } else if (strcmp(key, "find_dup") == 0) {
+        config->scanner.find_dup =
+            (strcasecmp(value, "yes") == 0 || strcasecmp(value, "true") == 0 ||
+             strcmp(value, "1") == 0);
       } else if (strcmp(key, "log_level") == 0) {
         if (strcasecmp(value, "debug") == 0) {
           config->scanner.log_level = LOG_DEBUG;
@@ -383,7 +394,17 @@ Config *read_config(const char *config_path) {
 }
 
 void log_message(Config *config, const char *level, const char *format, ...) {
+  // проверка config и log_stream
   if (!config || !config->log_stream) {
+    // Если нет config, пишем в stderr
+    if (!config) {
+      va_list args;
+      va_start(args, format);
+      fprintf(stderr, "[NO_CONFIG] ");
+      vfprintf(stderr, format, args);
+      fprintf(stderr, "\n");
+      va_end(args);
+    }
     return;
   }
 
@@ -407,6 +428,17 @@ void log_message(Config *config, const char *level, const char *format, ...) {
   struct tm *tm_info = localtime(&now);
   char timestamp[20];
   strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", tm_info);
+
+  // проверка, что log_stream ещё открыт
+  if (!config->log_stream) {
+    fprintf(stderr, "[%s] %s: ", timestamp, level);
+    va_list args;
+    va_start(args, format);
+    vfprintf(stderr, format, args);
+    va_end(args);
+    fprintf(stderr, "\n");
+    return;
+  }
 
   fprintf(config->log_stream, "[%s] %s: ", timestamp, level);
 

@@ -1,4 +1,5 @@
 <?php
+
 // api/download_favorites_zip.php
 
 require_once __DIR__ . '/../config/config.php';
@@ -29,9 +30,12 @@ if (empty($favorites)) {
 }
 
 // Функция для получения размера конкретного файла внутри архива
-function getFileSizeFromArchive($archivePath, $internalPath) {
-    if (!file_exists($archivePath)) return 0;
-    
+function getFileSizeFromArchive($archivePath, $internalPath)
+{
+    if (!file_exists($archivePath)) {
+        return 0;
+    }
+
     $zip = new ZipArchive();
     if ($zip->open($archivePath) === true) {
         $stat = $zip->statName($internalPath);
@@ -50,19 +54,19 @@ $totalSize = 0;
 foreach ($favorites as $book) {
     $fileInfo = null;
     $fileSize = 0;
-    
+
     // Формируем имя файла
     $author = preg_replace('/[\/\\\:*?"<>|]/', '_', $book['author'] ?? 'Unknown');
     $title = preg_replace('/[\/\\\:*?"<>|]/', '_', $book['title'] ?? 'Book');
     $safeName = trim($author . ' - ' . $title);
     $safeName = substr($safeName, 0, 200);
-    
+
     // Книга в архиве
     if (!empty($book['archive_path']) && !empty($book['archive_internal_path'])) {
         if (file_exists($book['archive_path'])) {
             // Получаем РЕАЛЬНЫЙ размер файла внутри архива
             $fileSize = getFileSizeFromArchive($book['archive_path'], $book['archive_internal_path']);
-            
+
             if ($fileSize > 0) {
                 $ext = pathinfo($book['archive_internal_path'], PATHINFO_EXTENSION);
                 $validBooks[] = [
@@ -75,7 +79,7 @@ foreach ($favorites as $book) {
                 $totalSize += $fileSize;
             }
         }
-    } 
+    }
     // Обычный файл
     elseif (!empty($book['file_path']) && file_exists($book['file_path'])) {
         $fileSize = filesize($book['file_path']);
@@ -117,20 +121,19 @@ foreach ($validBooks as $book) {
     if ($book['type'] === 'file') {
         $zip->addFile($book['path'], $book['name']);
         $added++;
-    } 
-    elseif ($book['type'] === 'archive') {
+    } elseif ($book['type'] === 'archive') {
         $archive = new ZipArchive();
         if ($archive->open($book['path']) === true) {
             $content = $archive->getFromName($book['internal']);
             $archive->close();
-            
+
             if ($content) {
                 $tempFile = tempnam(sys_get_temp_dir(), 'extract_');
                 file_put_contents($tempFile, $content);
                 $zip->addFile($tempFile, $book['name']);
                 $added++;
-                
-                register_shutdown_function(function() use ($tempFile) {
+
+                register_shutdown_function(function () use ($tempFile) {
                     @unlink($tempFile);
                 });
             }
@@ -153,7 +156,7 @@ header('Cache-Control: private, max-age=0, must-revalidate');
 
 readfile($zipName);
 
-register_shutdown_function(function() use ($zipName) {
+register_shutdown_function(function () use ($zipName) {
     @unlink($zipName);
 });
 

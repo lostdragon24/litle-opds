@@ -59,6 +59,8 @@
                     if ($cached !== null) {
                         $totalBooks = $cached;
                     } else {
+
+                        $db = Database::getInstance();
                         $stats = $db->getCollectionStats();
                         $totalBooks = $stats['total_books'] ?? 0;
                         Cache::set($cacheKey, $totalBooks, 'statistics', 3600);

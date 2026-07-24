@@ -20,7 +20,7 @@ class PageCache
             return;
         }
 
-	self::$enabled = Config::isPageCacheEnabled() && Config::isCacheEnabled();
+        self::$enabled = Config::isPageCacheEnabled() && Config::isCacheEnabled();
 
         if (self::$enabled && !headers_sent()) {
             ob_start();

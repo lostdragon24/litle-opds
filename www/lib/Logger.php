@@ -1,7 +1,9 @@
 <?php
+
 // lib/Logger.php
 
-class Logger {
+class Logger
+{
     private static $instance = null;
     private $logFile;
     private $logLevels = [
@@ -15,14 +17,16 @@ class Logger {
         'EMERGENCY' => 0
     ];
 
-    public static function getInstance($logFile = null) {
+    public static function getInstance($logFile = null)
+    {
         if (self::$instance === null) {
             self::$instance = new self($logFile);
         }
         return self::$instance;
     }
 
-    private function __construct($logFile = null) {
+    private function __construct($logFile = null)
+    {
         $this->logFile = $logFile ?: Config::getCacheDir() . '/system.log';
 
         // Создаем директорию если нужно
@@ -32,7 +36,7 @@ class Logger {
         }
     }
 
-        public static function setLogFile($path)
+    public static function setLogFile($path)
     {
         $instance = self::getInstance();
         $instance->logFile = $path;
@@ -47,7 +51,8 @@ class Logger {
     /**
      * Основная функция логирования
      */
-    public function log($message, $level = 'INFO', $context = []) {
+    public function log($message, $level = 'INFO', $context = [])
+    {
         $timestamp = $this->formatTimestamp();
         $levelTag = $this->formatLevel($level);
         $processInfo = $this->getProcessInfo();
@@ -77,7 +82,8 @@ class Logger {
     /**
      * Форматирует timestamp как в Apache
      */
-    private function formatTimestamp() {
+    private function formatTimestamp()
+    {
         $timestamp = time();
         $microseconds = sprintf("%06d", (microtime(true) - floor(microtime(true))) * 1000000);
         return date('D M d H:i:s.', $timestamp) . $microseconds . ' ' . date('Y', $timestamp);
@@ -86,7 +92,8 @@ class Logger {
     /**
      * Форматирует уровень логирования
      */
-    private function formatLevel($level) {
+    private function formatLevel($level)
+    {
         $level = strtoupper($level);
         $map = [
             'EMERGENCY' => 'emergency',
@@ -104,7 +111,8 @@ class Logger {
     /**
      * Получает информацию о процессе
      */
-    private function getProcessInfo() {
+    private function getProcessInfo()
+    {
         return [
             'pid' => getmypid(),
             'tid' => $this->getThreadId()
@@ -114,7 +122,8 @@ class Logger {
     /**
      * Получает ID потока (если доступно)
      */
-    private function getThreadId() {
+    private function getThreadId()
+    {
         if (function_exists('posix_getpid')) {
             return posix_getpid(); // В PHP нет прямого доступа к TID
         }
@@ -124,7 +133,8 @@ class Logger {
     /**
      * Получает информацию о клиенте
      */
-    private function getClientInfo() {
+    private function getClientInfo()
+    {
         $ip = $_SERVER['REMOTE_ADDR'] ?? 'localhost';
         $port = $_SERVER['REMOTE_PORT'] ?? '0';
         return $ip . ':' . $port;
@@ -133,7 +143,8 @@ class Logger {
     /**
      * Форматирует сообщение
      */
-    private function formatMessage($message, $context) {
+    private function formatMessage($message, $context)
+    {
         if (empty($context)) {
             return $message;
         }
@@ -154,14 +165,15 @@ class Logger {
     /**
      * Ротация лог-файла
      */
-    private function rotateLog() {
+    private function rotateLog()
+    {
         $backupFile = $this->logFile . '.' . date('Ymd_His');
         rename($this->logFile, $backupFile);
 
         // Оставляем только последние 10 бэкапов
         $backups = glob($this->logFile . '.*');
         if (count($backups) > 10) {
-            usort($backups, function($a, $b) {
+            usort($backups, function ($a, $b) {
                 return filemtime($a) - filemtime($b);
             });
             $toDelete = array_slice($backups, 0, count($backups) - 10);
@@ -172,18 +184,43 @@ class Logger {
     }
 
     // Magic методы для удобства
-    public function emergency($message, $context = []) { $this->log($message, 'EMERGENCY', $context); }
-    public function alert($message, $context = []) { $this->log($message, 'ALERT', $context); }
-    public function critical($message, $context = []) { $this->log($message, 'CRITICAL', $context); }
-    public function error($message, $context = []) { $this->log($message, 'ERROR', $context); }
-    public function warning($message, $context = []) { $this->log($message, 'WARNING', $context); }
-    public function notice($message, $context = []) { $this->log($message, 'NOTICE', $context); }
-    public function info($message, $context = []) { $this->log($message, 'INFO', $context); }
-    public function debug($message, $context = []) { $this->log($message, 'DEBUG', $context); }
+    public function emergency($message, $context = [])
+    {
+        $this->log($message, 'EMERGENCY', $context);
+    }
+    public function alert($message, $context = [])
+    {
+        $this->log($message, 'ALERT', $context);
+    }
+    public function critical($message, $context = [])
+    {
+        $this->log($message, 'CRITICAL', $context);
+    }
+    public function error($message, $context = [])
+    {
+        $this->log($message, 'ERROR', $context);
+    }
+    public function warning($message, $context = [])
+    {
+        $this->log($message, 'WARNING', $context);
+    }
+    public function notice($message, $context = [])
+    {
+        $this->log($message, 'NOTICE', $context);
+    }
+    public function info($message, $context = [])
+    {
+        $this->log($message, 'INFO', $context);
+    }
+    public function debug($message, $context = [])
+    {
+        $this->log($message, 'DEBUG', $context);
+    }
 }
 
 // Глобальная функция для обратной совместимости
-function my_log($message, $level = 'INFO', $context = []) {
+function my_log($message, $level = 'INFO', $context = [])
+{
     $logger = Logger::getInstance();
     $logger->log($message, $level, $context);
 }

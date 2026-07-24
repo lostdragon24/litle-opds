@@ -33,6 +33,9 @@ class ScannerConfigGenerator
      */
     private static function buildConfigContent()
     {
+
+        //	$cores = shell_exec('nproc');
+        //	$workers = trim($cores) -1;
         //$dbConfig = DbConfig::getConfig();
         $dbConfig = Config::getDbConfig();
 
@@ -57,8 +60,12 @@ class ScannerConfigGenerator
         $content .= "rescan_unchanged =  no\n";
         $content .= "enable_inpx =  no\n";
         $content .= "clear_database_inpx =  no\n";
-        $content .= "log_level =  no\n";
+        $content .= "log_level =  info\n";
         $content .= "hash_algorithm =  md5\n";
+        $content .= "batch_size =  10000\n";
+        $content .= "num_workers = 2\n";
+        $content .= "find_dup =  yes\n";
+
 
         return $content;
     }

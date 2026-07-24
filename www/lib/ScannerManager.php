@@ -580,8 +580,8 @@ class ScannerManager
         $content .= "log_file = " . $logFile . "\n";
 
         $content .= "rescan_unchanged = no\n";
-	$content .= "enable_inpx =  " . ($forInpx ? "yes" : "no") . "\n";
-	$content .= "clear_database_inpx =  no\n";
+        $content .= "enable_inpx =  " . ($forInpx ? "yes" : "no") . "\n";
+        $content .= "clear_database_inpx =  no\n";
         $content .= "hash_algorithm = md5\n";
         $content .= "log_level = info\n";
         $content .= "extract_covers = yes\n";
@@ -728,28 +728,28 @@ class ScannerManager
         }
     }
 
-/**
- * Импорт метаданных из INPX-файла (быстрый импорт).
- * @return array Результат операции
- * @throws Exception
- */
-public function importInpx()
-{
-    if (!$this->isAvailable()) {
-        throw new Exception(sprintf(__('scanner_error_not_available'), $this->scannerPath));
+    /**
+     * Импорт метаданных из INPX-файла (быстрый импорт).
+     * @return array Результат операции
+     * @throws Exception
+     */
+    public function importInpx()
+    {
+        if (!$this->isAvailable()) {
+            throw new Exception(sprintf(__('scanner_error_not_available'), $this->scannerPath));
+        }
+
+        if ($this->isRunning()) {
+            $pid = $this->getPid();
+            throw new Exception(sprintf(__('scanner_error_already_running'), $pid));
+        }
+
+        // Временно генерируем конфиг с enable_inpx = yes
+        $this->generateScannerConfig(true); // добавим параметр $forInpx
+
+        // Запускаем в фоне с режимом inpx
+        return $this->start(true, 'inpx');
     }
-
-    if ($this->isRunning()) {
-        $pid = $this->getPid();
-        throw new Exception(sprintf(__('scanner_error_already_running'), $pid));
-    }
-
-    // Временно генерируем конфиг с enable_inpx = yes
-    $this->generateScannerConfig(true); // добавим параметр $forInpx
-
-    // Запускаем в фоне с режимом inpx
-    return $this->start(true, 'inpx');
-}
 
 
 }

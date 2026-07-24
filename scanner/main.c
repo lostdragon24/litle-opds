@@ -1,6 +1,7 @@
 #include "common.h"
 #include "config.h"
 #include "database.h"
+#include "database_mysql.h"
 #include "scanner.h"
 #include "scanner_integration.h"
 #include "utils.h"
@@ -16,6 +17,7 @@ int main(int argc, char *argv[]) {
   // Проверяем аргумент --version
   if (argc == 2 && strcmp(argv[1], "--version") == 0) {
     printf("%s v%s\n", PROJECT_NAME, PROJECT_VERSION);
+    printf("Author: %s\n", PROJECT_AUTHOR);
     printf("Build: %s %s\n", __DATE__, __TIME__);
     printf("Platform: %s\n", get_platform_name());
     printf("Architecture: %s\n", get_architecture_name());
@@ -74,6 +76,11 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
+  if (config->database.type && strcmp(config->database.type, "mysql") == 0) {
+    mysql_thread_init();
+    log_message(config, "DEBUG", "MySQL thread environment initialized");
+  }
+
   log_message(config, "DEBUG", "=== CONFIGURATION DEBUG ===");
   log_message(config, "DEBUG", "DB Type: %s",
               config->database.type ? config->database.type : "NULL");
@@ -119,9 +126,14 @@ int main(int argc, char *argv[]) {
   log_message(config, "DEBUG", "Starting INPX processing...");
   int inpx_imported = process_inpx_if_enabled(db_handle, config);
 
+  int num_workers = config->scanner.num_workers;
+  int batch_size = config->scanner.batch_size;
+
   if (inpx_imported == -1) {
-    log_message(config, "DEBUG", "Starting regular directory scan...");
-    scan_directory(config->scanner.books_dir, db_handle, config);
+    log_message(config, "DEBUG", "Starting directory scan...");
+
+    scan_directory_multithreaded(config->scanner.books_dir, db_handle, config,
+                                 num_workers, batch_size);
   } else {
     log_message(config, "DEBUG",
                 "INPX processing completed - imported %d books", inpx_imported);
@@ -133,7 +145,11 @@ int main(int argc, char *argv[]) {
 
   if (inpx_imported == 0) {
     log_message(config, "DEBUG", "Starting regular directory scan...");
-    scan_directory(config->scanner.books_dir, db_handle, config);
+    //   scan_directory(config->scanner.books_dir, db_handle, config, 0);  // 0
+    //   = не в транзакции
+    scan_directory_multithreaded(config->scanner.books_dir, db_handle, config,
+                                 num_workers, batch_size);
+
   } else {
     log_message(config, "DEBUG",
                 "Skipping regular scan - imported %d books from INPX",
@@ -142,11 +158,24 @@ int main(int argc, char *argv[]) {
 
   log_message(config, "INFO", "Book scanning completed");
 
-  db_close(db_handle);
-  free_config(config);
+  if (db_handle) {
+    log_message(config, "DEBUG", "Finalizing database operations...");
+    // Принудительный COMMIT для MySQL
+    if (db_handle->db_type == DB_MYSQL) {
+      MySQLConnection *mysql_conn = (MySQLConnection *)db_handle->connection;
+      if (mysql_conn && mysql_conn->mysql) {
+        mysql_query(mysql_conn->mysql, "COMMIT");
+        log_message(config, "INFO", "Final COMMIT executed");
+      }
+    }
+    db_close(db_handle);
+  }
 
   remove_lock_file(lockfile_path, config);
 
-  log_message(NULL, "INFO", "=== SCANNER FINISHED ===");
+  free_config(config);
+
+  fprintf(stderr, "[%s] INFO: === SCANNER FINISHED ===\n",
+          get_current_timestamp());
   return 0;
 }

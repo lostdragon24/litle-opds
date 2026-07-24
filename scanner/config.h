@@ -31,8 +31,11 @@ typedef struct {
   int rescan_unchanged;
   int enable_inpx;
   int clear_database_inpx;
+  int find_dup;
   char *hash_algorithm;
   LogLevel log_level;
+  int num_workers; // Количество потоков для обработки файлов
+  int batch_size;  // Размер пакета для записи в БД
 } ScannerConfig;
 
 typedef struct {

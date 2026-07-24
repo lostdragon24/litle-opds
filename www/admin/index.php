@@ -3,6 +3,7 @@
 // admin/index.php
 
 require_once __DIR__ . '/../define.php';
+
 defined('LOPDS_ROOT') or die(__('admin_access_denied'));
 
 // Отключаем буферизацию
@@ -12,6 +13,9 @@ while (ob_get_level()) {
 
 require_once __DIR__ . '/../config/config.php';
 require_once __DIR__ . '/../init.php';
+require_once __DIR__ . '/../csp.php';
+
+
 
 my_log("=== ADMIN INDEX ===");
 my_log("Session ID: " . session_id());

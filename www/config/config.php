@@ -89,6 +89,11 @@ class Config
         return self::getCacheDir().'/covers';
     }
 
+    public static function getLogFile()
+    {
+        return self::getCacheDir().'/system.log';
+    }
+
     public static function getScannerPath()
     {
         if (null === self::$scannerPath) {
@@ -111,73 +116,73 @@ class Config
 
     // ===== МЕТОДЫ ДЛЯ OPDS =====
 
-public static function getOpdsTitle()
-{
-    return env('OPDS_TITLE', 'Моя библиотека');
-}
-
-public static function getOpdsAuthor()
-{
-    return env('OPDS_AUTHOR', 'Book Lib');
-}
-
-public static function getOpdsId()
-{
-    return env('OPDS_ID', 'urn:uuid:your-uuid-here');
-}
-
-   
-public static function getOpdsDefaultLang()
-{
-    $lang = env('OPDS_DEFAULT_LANG', null);
-    
-    if ($lang === null) {
-        $lang = env('OPDS_LANG', 'ru');
-        
-        if ($lang !== 'ru') {
-            error_log("Using deprecated OPDS_LANG, please rename to OPDS_DEFAULT_LANG in .env");
-        }
+    public static function getOpdsTitle()
+    {
+        return env('OPDS_TITLE', 'Моя библиотека');
     }
-    
-    return $lang;
-}
 
-public static function isCacheEnabled()
-{
-    return env('ENABLE_CACHE', 'true');
-}
+    public static function getOpdsAuthor()
+    {
+        return env('OPDS_AUTHOR', 'Book Lib');
+    }
 
-public static function isUseApcu()
-{
-    return env('USE_APCU', 'true');
-}
-
-public static function isCacheTtl()
-{
-    return env('CACHE_TTL', '36000');
-}
-
-public static function isPageCache()
-{
-    return filter_var(env('PAGE_CACHE_ENABLED', 'true'), FILTER_VALIDATE_BOOLEAN);
-}
-
-public static function getMemorylimit()
-{
-    return  env('MEMORY_LIMIT', '512M');
-}
+    public static function getOpdsId()
+    {
+        return env('OPDS_ID', 'urn:uuid:your-uuid-here');
+    }
 
 
-public static function isQuerylogging()
-{
-    return filter_var(env('Q_L', 'false'), FILTER_VALIDATE_BOOLEAN);
-}
+    public static function getOpdsDefaultLang()
+    {
+        $lang = env('OPDS_DEFAULT_LANG', null);
+
+        if ($lang === null) {
+            $lang = env('OPDS_LANG', 'ru');
+
+            if ($lang !== 'ru') {
+                my_log("Using deprecated OPDS_LANG, please rename to OPDS_DEFAULT_LANG in .env");
+            }
+        }
+
+        return $lang;
+    }
+
+    public static function isCacheEnabled()
+    {
+        return env('ENABLE_CACHE', 'true');
+    }
+
+    public static function isUseApcu()
+    {
+        return env('USE_APCU', 'true');
+    }
+
+    public static function isCacheTtl()
+    {
+        return env('CACHE_TTL', '36000');
+    }
+
+    public static function isPageCache()
+    {
+        return filter_var(env('PAGE_CACHE_ENABLED', 'true'), FILTER_VALIDATE_BOOLEAN);
+    }
+
+    public static function getMemorylimit()
+    {
+        return  env('MEMORY_LIMIT', '512M');
+    }
 
 
-public static function isPageCacheEnabled()
-{
-    return filter_var(env('PAGE_CACHE_ENABLED', 'true'), FILTER_VALIDATE_BOOLEAN);
-}
+    public static function isQuerylogging()
+    {
+        return filter_var(env('Q_L', 'false'), FILTER_VALIDATE_BOOLEAN);
+    }
+
+
+    public static function isPageCacheEnabled()
+    {
+        return filter_var(env('PAGE_CACHE_ENABLED', 'true'), FILTER_VALIDATE_BOOLEAN);
+    }
 
     /**
      * Проверить, используется ли SQLite.
@@ -236,18 +241,18 @@ public static function isPageCacheEnabled()
 
     public static function startSecureSession()
     {
-	return SessionManager::getCsrfToken();
+        return SessionManager::getCsrfToken();
 
     }
 
     public static function getCsrfToken()
     {
-	return SessionManager::getCsrfToken();
+        return SessionManager::getCsrfToken();
     }
 
     public static function validateCsrfToken($token)
     {
-	return SessionManager::validateCsrfToken($token);
+        return SessionManager::validateCsrfToken($token);
     }
 
 

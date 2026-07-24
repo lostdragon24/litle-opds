@@ -64,34 +64,42 @@ class AdminController
 
     public function handleRequest()
     {
-    // Определяем действие
-    $action = $_GET['action'] ?? 'dashboard';
-    $postAction = $_POST['action'] ?? '';
+        // Определяем действие
+        $action = $_GET['action'] ?? 'dashboard';
+        $postAction = $_POST['action'] ?? '';
 
-    my_log("=== HANDLE REQUEST ===");
-    my_log("Session ID: " . session_id());
-    my_log("Action: " . $action);
-    my_log("POST Action: " . $postAction);
+        my_log("=== HANDLE REQUEST ===");
+        my_log("Session ID: " . session_id());
+        my_log("Action: " . $action);
+        my_log("POST Action: " . $postAction);
 
-    // Публичные действия (не требуют авторизации)
-    $publicActions = ['login', 'do_login', 'debug_session', 'log_download'];
+        // Публичные действия (не требуют авторизации)
+        $publicActions = ['login', 'do_login', 'debug_session', 'log_download'];
 
-    // Проверяем авторизацию для всех действий, кроме публичных
-    if (!in_array($action, $publicActions) && !in_array($postAction, $publicActions)) {
-        if (!$this->checkAuth()) {
-            $this->showLogin();
+        // Проверяем авторизацию для всех действий, кроме публичных
+        if (!in_array($action, $publicActions) && !in_array($postAction, $publicActions)) {
+            if (!$this->checkAuth()) {
+                $this->showLogin();
+                return;
+            }
+        }
+
+        if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) &&
+            strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest') {
+            // AJAX запросы обрабатываются в отдельном файле
+            // Просто возвращаем управление
             return;
         }
-    }
 
-    // Обработка POST запросов
-    if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($postAction)) {
-        $this->handlePost($postAction);
-        return;
-    }
 
-    // Маршрутизация GET запросов
-    switch ($action) {
+        // Обработка POST запросов
+        if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($postAction)) {
+            $this->handlePost($postAction);
+            return;
+        }
+
+        // Маршрутизация GET запросов
+        switch ($action) {
             case 'dashboard':
                 $this->showDashboard();
                 break;
@@ -131,8 +139,14 @@ class AdminController
                 $table = $_GET['table'] ?? '';
                 $this->browseTable($table);
                 break;
+            case 'author_deduplicate':
+                $this->showAuthorDeduplicate();
+                break;
             case 'library_backup':
                 $this->showLibraryBackup();
+                break;
+            case 'about_site':
+                $this->showAbout();
                 break;
 
             default:
@@ -422,39 +436,39 @@ class AdminController
 
             case 'log_clear':
                 try {
-                $logType = $_POST['log_type'] ?? '';
-                if (empty($logType)) {
-                    throw new Exception(__('admin_error_missing_params'));
-                }
+                    $logType = $_POST['log_type'] ?? '';
+                    if (empty($logType)) {
+                        throw new Exception(__('admin_error_missing_params'));
+                    }
 
-                if ($this->logManager->clearLog($logType)) {
-                    $_SESSION['message'] = __('log_cleared');
-                    $_SESSION['message_type'] = 'success';
-                }
+                    if ($this->logManager->clearLog($logType)) {
+                        $_SESSION['message'] = __('log_cleared');
+                        $_SESSION['message_type'] = 'success';
+                    }
                 } catch (Exception $e) {
                     $_SESSION['message'] = $e->getMessage();
                     $_SESSION['message_type'] = 'danger';
                 }
                 header('Location: ?action=logs');
-            break;
+                break;
 
-case 'log_download':
-    try {
-        $logType = $_GET['download'] ?? '';
-        if (empty($logType)) {
-            throw new Exception(__('admin_error_missing_params'));
-        }
+            case 'log_download':
+                try {
+                    $logType = $_GET['download'] ?? '';
+                    if (empty($logType)) {
+                        throw new Exception(__('admin_error_missing_params'));
+                    }
 
-        // ВАЖНО: скачивание должно завершить скрипт, а не делать редирект
-        $this->logManager->downloadLog($logType);
-        exit; // Явный выход, хотя downloadLog сам делает exit
-    } catch (Exception $e) {
-        $_SESSION['message'] = $e->getMessage();
-        $_SESSION['message_type'] = 'danger';
-        header('Location: ?action=logs');
-        exit;
-    }
-    break;
+                    // ВАЖНО: скачивание должно завершить скрипт, а не делать редирект
+                    $this->logManager->downloadLog($logType);
+                    exit; // Явный выход, хотя downloadLog сам делает exit
+                } catch (Exception $e) {
+                    $_SESSION['message'] = $e->getMessage();
+                    $_SESSION['message_type'] = 'danger';
+                    header('Location: ?action=logs');
+                    exit;
+                }
+                break;
 
             default:
                 my_log("Unknown POST action: " . $action);
@@ -464,28 +478,28 @@ case 'log_download':
     }
 
     // Добавляем отдельный метод для скачивания
-private function handleLogDownload()
-{
-    try {
-        $logType = $_GET['download'] ?? '';
-        if (empty($logType)) {
-            throw new Exception(__('admin_error_missing_params'));
-        }
+    private function handleLogDownload()
+    {
+        try {
+            $logType = $_GET['download'] ?? '';
+            if (empty($logType)) {
+                throw new Exception(__('admin_error_missing_params'));
+            }
 
-        // Проверяем авторизацию (для безопасности)
-        if (!$this->checkAuth()) {
-            throw new Exception(__('admin_error_access_denied'));
-        }
+            // Проверяем авторизацию (для безопасности)
+            if (!$this->checkAuth()) {
+                throw new Exception(__('admin_error_access_denied'));
+            }
 
-        $this->logManager->downloadLog($logType);
-        exit;
-    } catch (Exception $e) {
-        $_SESSION['message'] = $e->getMessage();
-        $_SESSION['message_type'] = 'danger';
-        header('Location: ?action=logs');
-        exit;
+            $this->logManager->downloadLog($logType);
+            exit;
+        } catch (Exception $e) {
+            $_SESSION['message'] = $e->getMessage();
+            $_SESSION['message_type'] = 'danger';
+            header('Location: ?action=logs');
+            exit;
+        }
     }
-}
 
 
 
@@ -860,13 +874,115 @@ private function handleLogDownload()
         exit;
     }
 
+    private function showAbout()
+    {
+        require_once __DIR__ . '/AboutManager.php';
+        $aboutManager = new AboutManager();
 
+        // Получаем статистику для отображения
+        try {
+            $db = Database::getInstance();
+            $stats = $db->getCollectionStats();
+        } catch (Exception $e) {
+            $stats = ['total_books' => 0, 'total_authors' => 0, 'total_genres' => 0];
+        }
+
+        $data = [
+            'about' => $aboutManager->getAppInfo(),
+            'changelog' => $aboutManager->getChangelog(),
+            'credits' => $aboutManager->getCredits(),
+            'requirements' => $aboutManager->getSystemRequirements(),
+            'stats' => $stats,
+            'csrf_token' => Config::getCsrfToken()
+        ];
+
+        $this->render('about', $data);
+    }
+
+    private function showAuthorDeduplicate()
+    {
+        require_once __DIR__ . '/AuthorDeduplicator.php';
+        $deduplicator = new AuthorDeduplicator();
+
+        $threshold = isset($_GET['threshold']) ? (int)$_GET['threshold'] : 70;
+        $threshold = max(50, min(95, $threshold));
+        $thresholdFloat = $threshold / 100;
+
+        $groups = [];
+        $stats = $deduplicator->getAuthorStats();
+        $history = $deduplicator->getMergeHistory();
+        $mergeCount = 0;
+
+        // Автоматическое объединение
+        if (isset($_GET['auto_merge']) && $_GET['auto_merge'] == 1) {
+            $result = $deduplicator->autoMergeAll($thresholdFloat);
+            if ($result['success']) {
+                $mergeCount = $result['merged'];
+                $_SESSION['message'] = sprintf(
+                    __('author_deduplicate_auto_success'),
+                    $result['merged'],
+                    $result['groups_processed']
+                );
+                $_SESSION['message_type'] = 'success';
+            } else {
+                $_SESSION['message'] = __('author_deduplicate_auto_error') . ': ' . implode('; ', $result['errors']);
+                $_SESSION['message_type'] = 'danger';
+            }
+            header('Location: ?action=author_deduplicate&threshold=' . $threshold);
+            exit;
+        }
+
+        // Обработка ручного объединения
+        if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'author_merge') {
+            $main = $_POST['main_author'] ?? '';
+            $duplicate = $_POST['duplicate_author'] ?? '';
+
+            if (!empty($main) && !empty($duplicate)) {
+                $result = $deduplicator->mergeAuthors($main, $duplicate);
+                if ($result['success']) {
+                    $_SESSION['message'] = $result['message'];
+                    $_SESSION['message_type'] = 'success';
+                } else {
+                    $_SESSION['message'] = $result['message'];
+                    $_SESSION['message_type'] = 'danger';
+                }
+                header('Location: ?action=author_deduplicate&threshold=' . $threshold);
+                exit;
+            }
+        }
+
+        // Поиск групп
+        if (isset($_GET['threshold']) || isset($_GET['auto_merge'])) {
+            $result = $deduplicator->findSimilarForAuthor($thresholdFloat);
+            $groups = $result['groups'];
+
+            // Обновляем статистику
+            $stats['groups_found'] = $result['stats']['groups_found'];
+            $stats['comparisons'] = $result['stats']['comparisons'];
+            $stats['time'] = $result['stats']['time'];
+        }
+
+        $data = [
+            'groups' => $groups,
+            'stats' => $stats,
+            'history' => $history,
+            'threshold' => $threshold,
+            'mergeCount' => $mergeCount,
+            'message' => $_SESSION['message'] ?? '',
+            'message_type' => $_SESSION['message_type'] ?? '',
+            'csrf_token' => Config::getCsrfToken()
+        ];
+
+        unset($_SESSION['message'], $_SESSION['message_type']);
+
+        $this->render('author_deduplicate', $data);
+    }
 
 
     private function browseTable($tableName)
     {
         // Проверяем разрешенные таблицы
-        $allowedTables = ['books', 'book_ratings', 'book_favorites', 'archives', 'bookmarks', 'reading_history'];
+        $allowedTables = ['books', 'book_ratings', 'book_favorites', 'archives', 'bookmarks', 'reading_history', 'bookmark_tags', 'bookmarks_fts', 'bookmarks_fts_config', 'bookmarks_fts_data', 'bookmarks_fts_docsize', 'bookmarks_fts_idx'];
         if (!in_array($tableName, $allowedTables)) {
             $_SESSION['message'] = __('admin_error_access_denied');
             $_SESSION['message_type'] = 'danger';

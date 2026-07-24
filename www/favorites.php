@@ -237,7 +237,8 @@ require 'templates/header.php';
 <div class="mb-4">
     <button id="downloadFavoritesBtn" class="btn btn-success btn-lg">
         <i class="fas fa-file-archive me-2"></i>
-        Скачать все книги из избранного (ZIP)
+        <?php echo __('download_all'); ?>
+
     </button>
     <div id="downloadProgress" style="display: none;" class="mt-2">
         <div class="alert alert-info">

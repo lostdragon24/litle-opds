@@ -172,7 +172,24 @@ $availableLangs = $detector->getAvailableLanguages();
 	    <i class="fas fa-archive"></i>
 	    <?php echo __('admin_library_backup'); ?>
     </a>
+
+
+<a class="nav-link <?php echo $currentAction === 'author_deduplicate' ? 'active' : ''; ?>" 
+   href="?action=author_deduplicate">
+    <i class="fas fa-users-cog me-2"></i>
+    <?php echo __('author_deduplicate_title'); ?>
+</a>
+
+
             
+<a class="nav-link <?php echo $currentAction === 'about' ? 'active' : ''; ?>" 
+   href="?action=about_site">
+    <i class="fas fa-info-circle me-2"></i>
+    <?php echo __('about_title'); ?>
+</a>
+
+
+
             <div class="border-top border-secondary my-3"></div>
             
             <a class="nav-link" href="../index.php" target="_blank">

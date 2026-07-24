@@ -62,11 +62,20 @@ $userIp = $_SERVER['REMOTE_ADDR'];
 
 $itemsPerPage = Config::getItemsPerPage();
 
+// ===== ИСПРАВЛЕНИЕ: добавляем пустой массив фильтров =====
+$filters = [
+    'lang' => $_GET['lang'] ?? null,
+    'format' => $_GET['format'] ?? null,
+    'sort' => $_GET['sort'] ?? 'new'
+];
+
 if (!empty($searchQuery)) {
-    $books = $db->searchBooks($searchQuery, $searchField, $page);
-    $totalBooks = $db->getSearchCount($searchQuery, $searchField);
+    // Передаём 4 аргумента: query, scope, page, perPage, filters
+    $books = $db->searchBooks($searchQuery, $searchField, $page, $itemsPerPage, $filters);
+    $totalBooks = $db->getSearchCount($searchQuery, $searchField, $filters);
 } else {
-    $books = $db->getRecentBooks($itemsPerPage, ($page - 1) * $itemsPerPage);
+    // getRecentBooks тоже теперь принимает filters
+    $books = $db->getRecentBooks($itemsPerPage, ($page - 1) * $itemsPerPage, $filters);
     $totalBooks = $db->getTotalBooksCount();
 }
 
@@ -86,6 +95,7 @@ $userFavorites = [];
 if (!empty($bookIds)) {
     $userFavorites = $db->getFavoritesForBooks($bookIds, $userIp);
 }
+
 
 require 'templates/header.php';
 ?>

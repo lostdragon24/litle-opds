@@ -353,15 +353,15 @@ char *get_architecture_name(void);
 // ============================================================================
 
 #define PROJECT_NAME "Book Scanner"
-#define PROJECT_VERSION "0.1.15"
-#define PROJECT_AUTHOR "Sqee&Dragon"
+#define PROJECT_VERSION "0.1.16"
+#define PROJECT_AUTHOR "Squee&Dragon"
 #define PROJECT_LICENSE "GNU GPLv2"
 
 // Макрос для вывода информации о сборке
 #define PRINT_BUILD_INFO()                                                     \
   do {                                                                         \
     printf("%s v%s\n", PROJECT_NAME, PROJECT_VERSION);                         \
-    printf("Author: %s %s\n", PROJECT_AUTHOR);                                 \
+    printf("Author: %s\n", PROJECT_AUTHOR);                                    \
     printf("Build: %s %s\n", __DATE__, __TIME__);                              \
     printf("Platform: %s\n", get_platform_name());                             \
     printf("Architecture: %s\n", get_architecture_name());                     \

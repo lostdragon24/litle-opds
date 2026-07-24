@@ -160,12 +160,39 @@ class SecurityHelper
 
     public function sanitizeBookContent($content)
     {
-        // Разрешённые теги для FB2
-        $allowed = '<p><br><h1><h2><h3><strong><em><i><b><ul><ol><li><img><a>';
+        // ============================================
+        // СПЕЦИАЛЬНАЯ ОБРАБОТКА: СОХРАНЯЕМ ИЗОБРАЖЕНИЯ
+        // ============================================
+        // Сохраняем все теги <img> с их атрибутами
+        $images = [];
+        $content = preg_replace_callback('/<img[^>]*>/i', function ($matches) use (&$images) {
+            $images[] = $matches[0];
+            return '%%IMG_' . (count($images) - 1) . '%%';
+        }, $content);
+
+        // ============================================
+        // УДАЛЯЕМ ВСЕ ТЕГИ <image> (они нам не нужны)
+        // ============================================
+        $content = preg_replace('/<image[^>]*>.*?<\/image>/is', '', $content);
+        $content = preg_replace('/<image[^>]*\/?>/i', '', $content);
+
+        // ============================================
+        // ПРИМЕНЯЕМ strip_tags К ОСТАЛЬНОМУ КОНТЕНТУ
+        // ============================================
+        $allowed = '<p><br><h1><h2><h3><strong><em><i><b><ul><ol><li><a><div><span>';
         $content = strip_tags($content, $allowed);
+
         // Удалить опасные атрибуты
         $content = preg_replace('/<(\w+)[^>]*?(on\w+)=["\'][^"\']*["\'][^>]*>/i', '<$1>', $content);
         $content = preg_replace('/javascript:/i', '', $content);
+
+        // ============================================
+        // ВОССТАНАВЛИВАЕМ ИЗОБРАЖЕНИЯ
+        // ============================================
+        foreach ($images as $index => $imgTag) {
+            $content = str_replace('%%IMG_' . $index . '%%', $imgTag, $content);
+        }
+
         return $content;
     }
 

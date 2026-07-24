@@ -4,7 +4,27 @@
 #include "config.h"
 #include "database.h"
 #include <mysql/mysql.h>
-#include <stdbool.h>
+#include <stdbool.h> // <-- нужен для типа bool в новых API
+
+#if (defined(MARIADB_BASE_VERSION) && defined(MYSQL_VERSION_ID) &&             \
+     MYSQL_VERSION_ID < 100200) ||                                             \
+    (!defined(MARIADB_BASE_VERSION) && defined(MYSQL_VERSION_ID) &&            \
+     MYSQL_VERSION_ID < 80000)
+
+// Старые версии: MySQL < 8.0, MariaDB < 10.2
+typedef my_bool mysql_bool_t;
+#define MYSQL_BOOL_TRUE 1
+#define MYSQL_BOOL_FALSE 0
+
+#else
+
+// Современные версии: MySQL 8.0+, MariaDB 10.2+
+// Поле is_null в MYSQL_BIND теперь имеет тип bool *, а не char *
+typedef bool mysql_bool_t;
+#define MYSQL_BOOL_TRUE true
+#define MYSQL_BOOL_FALSE false
+
+#endif
 
 // Структура для MySQL соединения
 typedef struct {
@@ -24,7 +44,12 @@ int mysql_create_archive_table(MySQLConnection *mysql_conn, Config *config);
 int mysql_create_ratings_table(MySQLConnection *mysql_conn, Config *config);
 int mysql_create_favorites_table(MySQLConnection *mysql_conn, Config *config);
 int mysql_create_bookmarks_table(MySQLConnection *mysql_conn, Config *config);
-int mysql_create_reading_history_table(MySQLConnection *mysql_conn, Config *config);
+int mysql_create_bookmark_tags_table(MySQLConnection *mysql_conn,
+                                     Config *config);
+int mysql_create_bookmarks_fts_table(MySQLConnection *mysql_conn,
+                                     Config *config);
+int mysql_create_reading_history_table(MySQLConnection *mysql_conn,
+                                       Config *config);
 
 // Функции для работы с архивами
 int mysql_archive_needs_rescan(MySQLConnection *mysql_conn,
@@ -52,5 +77,9 @@ int check_book_exists_smart(MySQLConnection *mysql_conn, BookMeta *meta,
 
 // Функция переподключения
 int mysql_reconnect(MySQLConnection *mysql_conn, Config *config);
+
+int mysql_begin_transaction(MySQLConnection *mysql_conn, Config *config);
+int mysql_commit_transaction(MySQLConnection *mysql_conn, Config *config);
+int mysql_rollback_transaction(MySQLConnection *mysql_conn, Config *config);
 
 #endif // DATABASE_MYSQL_H

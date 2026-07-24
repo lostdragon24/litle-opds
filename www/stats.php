@@ -8,6 +8,8 @@ require_once 'lib/Database.php';
 require_once 'lib/Cache.php';
 require_once 'lib/PageCache.php';
 require_once 'init.php';
+require_once 'csp.php';
+
 
 PageCache::start('stats_optimized_v3');
 

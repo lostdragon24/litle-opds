@@ -54,24 +54,24 @@ class Translator
     }
 
 
-public function translate($key, $params = [])
-{
-    $text = $this->translations[$key] ?? $key;
+    public function translate($key, $params = [])
+    {
+        $text = $this->translations[$key] ?? $key;
 
-    // Защита от некорректных параметров
-    if (!empty($params) && is_array($params)) {
-        foreach ($params as $placeholder => $value) {
-            $text = str_replace("%{$placeholder}%", $value, $text);
-            $text = str_replace(":{$placeholder}", $value, $text);
-            $text = str_replace("{{$placeholder}}", $value, $text);
+        // Защита от некорректных параметров
+        if (!empty($params) && is_array($params)) {
+            foreach ($params as $placeholder => $value) {
+                $text = str_replace("%{$placeholder}%", $value, $text);
+                $text = str_replace(":{$placeholder}", $value, $text);
+                $text = str_replace("{{$placeholder}}", $value, $text);
+            }
+        } elseif (!empty($params) && !is_array($params)) {
+            // Логируем проблему, но не падаем
+            error_log("Translator::translate() called with non-array params: " . gettype($params));
         }
-    } elseif (!empty($params) && !is_array($params)) {
-        // Логируем проблему, но не падаем
-        error_log("Translator::translate() called with non-array params: " . gettype($params));
-    }
 
-    return $text;
-}
+        return $text;
+    }
 
     public function getCurrentLanguage()
     {

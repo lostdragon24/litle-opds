@@ -42,6 +42,33 @@ error_log("DEVICE_ID: " . DEVICE_ID);
 require 'templates/header.php';
 ?>
 
+
+
+<script src="<?php echo $basePath; ?>/js/epubjs/jszip.min.js"></script>
+
+<!-- Стили для конвертера -->
+<style>
+    .fb2-converter {
+        margin-top: 1rem;
+        padding: 1rem;
+        background: #f8f9fa;
+        border-radius: 8px;
+        border: 1px solid #dee2e6;
+    }
+    .fb2-converter .progress {
+        height: 20px;
+        margin: 10px 0;
+        display: none;
+    }
+    .fb2-converter .progress-bar {
+        width: 0%;
+        transition: width 0.3s;
+    }
+    #converterStatus {
+        margin-top: 10px;
+    }
+</style>
+
 <div class="container py-4">
     <!-- Хлебные крошки -->
     <nav aria-label="breadcrumb" class="mb-4">
@@ -73,7 +100,7 @@ require 'templates/header.php';
                                 </span>
                                 <?php if ($book['archive_path']): ?>
                                 <span class="badge bg-secondary ms-1">
-                                    📦 В архиве
+                                    📦 <?php echo __('book_status_archive'); ?>
                                 </span>
                                 <?php endif; ?>
                             </div>
@@ -105,6 +132,36 @@ require 'templates/header.php';
                                 <i class="fas fa-book-open me-2"></i><?php echo __('read_online'); ?>
                             </a>
                         <?php endif; ?>
+
+
+                        <div class="fb2-converter">
+    <h5><i class="fas fa-exchange-alt me-2"></i><?php echo __('fb2_2_epub'); ?></h5>
+    <p class="text-muted small"><?php echo __('fb2_2_epub_msg'); ?></p>
+
+    <button id="convertToEpubBtn" class="btn btn-success btn-sm">
+        <i class="fas fa-file-export me-1"></i>
+        <?php echo __('fb2_2_epub_btn'); ?>
+    </button>
+
+    <div class="progress mt-2" id="converterProgress">
+        <div class="progress-bar progress-bar-striped progress-bar-animated"
+             id="converterProgressBar"
+             role="progressbar"
+             style="width: 0%">
+            0%
+        </div>
+    </div>
+
+    <div id="converterStatus" class="mt-2"></div>
+
+    <a id="downloadEpubBtn" class="btn btn-primary btn-sm mt-2" style="display:none;">
+        <i class="fas fa-download me-1"></i>
+        <?php echo __('fb2_2_epub_btn_download'); ?>
+    </a>
+</div>
+
+
+
                     </div>
                 </div>
             </div>
@@ -542,6 +599,512 @@ if (typeof handleCoverError !== 'function') {
         parent.appendChild(placeholder);
     };
 }
+
+
+
+// ============================================================
+// Конвертор FB2 в EPUB
+// ============================================================
+
+
+
+document.addEventListener('DOMContentLoaded', function() {
+    const convertBtn = document.getElementById('convertToEpubBtn');
+    const progress = document.getElementById('converterProgress');
+    const progressBar = document.getElementById('converterProgressBar');
+    const statusDiv = document.getElementById('converterStatus');
+    const downloadBtn = document.getElementById('downloadEpubBtn');
+
+    const bookId = <?php echo $book['id']; ?>;
+
+    convertBtn.addEventListener('click', async function() {
+        // Проверяем, что книга в FB2
+        const fileType = '<?php echo $book['file_type']; ?>';
+        if (fileType !== 'fb2') {
+            showStatus('<?php echo __('fb2_2_epub_msg_script_1'); ?>', 'warning');
+            return;
+        }
+
+        convertBtn.disabled = true;
+        convertBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Загрузка...';
+
+        try {
+            // 1. Загружаем FB2 контент
+            const response = await fetch(`./api/book_content.php?id=${bookId}&format=raw`);
+            if (!response.ok) {
+                throw new Error('<?php echo __('fb2_2_epub_msg_script_2'); ?>');
+            }
+
+            const fb2Text = await response.text();
+            showStatus('<?php echo __('fb2_2_epub_msg_script_3'); ?>', 'info');
+
+            // 2. Конвертируем
+            progress.style.display = 'block';
+            progressBar.style.width = '10%';
+            progressBar.textContent = '10%';
+
+            const epubBlob = await convertFB2ToEpub(fb2Text, {
+                title: '<?php echo addslashes($book['title']); ?>',
+                author: '<?php echo addslashes($book['author']); ?>',
+                language: '<?php echo $book['language'] ?? 'ru'; ?>'
+            });
+
+            progressBar.style.width = '100%';
+            progressBar.textContent = '100%';
+
+            // 3. Создаем ссылку для скачивания
+            const url = URL.createObjectURL(epubBlob);
+
+            const fileName = '<?php echo preg_replace('/[^a-zA-Z0-9а-яА-ЯёЁ\s\-_]/u', '', $book['title']); ?>.epub';
+
+            downloadBtn.href = url;
+            downloadBtn.download = fileName;
+            downloadBtn.style.display = 'inline-block';
+
+            showStatus('<?php echo __('fb2_2_epub_msg_script_4'); ?>', 'success');
+
+        } catch (error) {
+            showStatus('Ошибка: ' + error.message, 'danger');
+            console.error('Conversion error:', error);
+        } finally {
+            convertBtn.disabled = false;
+            convertBtn.innerHTML = '<i class="fas fa-file-export me-1"></i><?php echo __('fb2_2_epub_msg_script_5'); ?>';
+        }
+    });
+
+    function showStatus(message, type) {
+        const types = {
+            info: 'text-primary',
+            success: 'text-success',
+            warning: 'text-warning',
+            danger: 'text-danger'
+        };
+        statusDiv.className = types[type] || 'text-muted';
+        statusDiv.textContent = message;
+    }
+});
+
+// ============================================================
+// FB2 → EPUB Конвертер (адаптирован для использования в браузере)
+// ============================================================
+
+async function convertFB2ToEpub(fb2Text, metadata) {
+    const bookMetadata = {
+        title: metadata.title || 'Untitled',
+        author: metadata.author || 'Unknown Author',
+        language: metadata.language || 'en'
+    };
+
+    updateProgress(8);
+
+    const parser = new DOMParser();
+    const xmlDoc = parser.parseFromString(fb2Text, "text/xml");
+    if (xmlDoc.querySelector("parsererror")) {
+        throw new Error("Invalid FB2 file format");
+    }
+
+    // Извлекаем бинарные данные (изображения)
+    const binaries = {};
+    const binaryNodes = xmlDoc.querySelectorAll("binary[id]");
+    binaryNodes.forEach((b) => {
+        const id = b.getAttribute("id");
+        const mime = (b.getAttribute("content-type") || "image/jpeg").toLowerCase();
+        const base64 = (b.textContent || "").replace(/\s+/g, "");
+        binaries[id] = { mime, base64, ext: mimeToExt(mime) };
+    });
+
+    updateProgress(18);
+
+    // Извлекаем главы
+    const bodies = xmlDoc.querySelectorAll("body");
+    const chapters = [];
+    let chapterIndex = 1;
+
+    function pushSectionAsChapter(section) {
+        const titleNode = section.querySelector(":scope > title");
+        const chapTitle = titleNode ? textContentDeep(titleNode).trim() : `Chapter ${chapterIndex}`;
+        const htmlContent = serializeSectionToXHTML(section, binaries);
+        chapters.push({
+            id: `ch${chapterIndex}`,
+            title: chapTitle || `Chapter ${chapterIndex}`,
+            content: htmlContent
+        });
+        chapterIndex++;
+    }
+
+    if (bodies.length) {
+        bodies.forEach((body) => {
+            const sections = body.querySelectorAll(":scope > section");
+            if (sections.length) {
+                sections.forEach((sec) => pushSectionAsChapter(sec));
+            } else {
+                pushSectionAsChapter(body);
+            }
+        });
+    } else {
+        const allSections = xmlDoc.querySelectorAll("section");
+        if (allSections.length) {
+            allSections.forEach((sec) => pushSectionAsChapter(sec));
+        } else {
+            const wrapper = xmlDoc.documentElement;
+            pushSectionAsChapter(wrapper);
+        }
+    }
+
+    if (chapters.length === 0) {
+        throw new Error("No readable content sections found in FB2.");
+    }
+
+    updateProgress(35);
+
+    // Создаем EPUB через JSZip
+    const zip = new JSZip();
+
+    // mimetype (должен быть без сжатия)
+    zip.file("mimetype", "application/epub+zip", { compression: "STORE" });
+
+    // META-INF/container.xml
+    zip.folder("META-INF").file(
+        "container.xml",
+        `<?xml version="1.0" encoding="UTF-8"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>`
+    );
+
+    updateProgress(45);
+
+    const oebps = zip.folder("OEBPS");
+    const css = `
+@charset "UTF-8";
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; line-height: 1.6; padding: 1rem; }
+h1,h2,h3 { line-height: 1.25; }
+h1 { font-size: 1.6rem; margin: 1rem 0 .5rem; }
+h2 { font-size: 1.4rem; margin: 1rem 0 .5rem; }
+h3 { font-size: 1.2rem; margin: .8rem 0 .4rem; }
+p { margin: .6rem 0; }
+blockquote { margin: .8rem 1rem; padding-left: .8rem; border-left: 3px solid #ccc; }
+.poem { margin: .8rem 0; }
+.stanza { margin: .6rem 0; }
+img { max-width: 100%; height: auto; }
+hr { border: 0; border-top: 1px solid #ddd; margin: 1rem 0; }
+    `.trim();
+    oebps.file("styles.css", css);
+
+    const lang = (bookMetadata.language || "en").toLowerCase();
+    const manifestItems = [
+        { id: "css", href: "styles.css", mediaType: "text/css" }
+    ];
+    const spineItemrefs = [];
+
+    chapters.forEach((ch, idx) => {
+        const filename = `chapter-${idx + 1}.xhtml`;
+        const xhtml = wrapAsXHTML(ch.title, ch.content, lang);
+        oebps.file(filename, xhtml);
+        manifestItems.push({
+            id: ch.id,
+            href: filename,
+            mediaType: "application/xhtml+xml"
+        });
+        spineItemrefs.push({ idref: ch.id });
+    });
+
+    updateProgress(60);
+
+    // Сохраняем изображения
+    const imagesFolder = oebps.folder("images");
+    const usedImageHrefs = new Set();
+
+    chapters.forEach((ch) => {
+        const regex = /src="images\/([^"]+)"/g;
+        let m;
+        while ((m = regex.exec(ch.content)) !== null) {
+            usedImageHrefs.add(m[1]);
+        }
+    });
+
+    const imageKeys = usedImageHrefs.size ? [...usedImageHrefs] : Object.keys(binaries).map((id) => `${id}.${binaries[id].ext}`);
+
+    for (const name of imageKeys) {
+        let id, ext;
+        if (name.includes(".")) {
+            id = name.substring(0, name.lastIndexOf("."));
+            ext = name.substring(name.lastIndexOf(".") + 1);
+        } else {
+            id = name;
+            ext = (binaries[id] && binaries[id].ext) || "jpg";
+        }
+        const bin = binaries[id];
+        if (!bin) continue;
+        const arrayBuf = base64ToUint8Array(bin.base64);
+        imagesFolder.file(`${id}.${ext}`, arrayBuf);
+        manifestItems.push({
+            id: `img_${id}`,
+            href: `images/${id}.${ext}`,
+            mediaType: bin.mime
+        });
+    }
+
+    updateProgress(72);
+
+    // nav.xhtml
+    const navXhtml = buildNavXHTML(bookMetadata.title || "Untitled", chapters, lang);
+    oebps.file("nav.xhtml", navXhtml);
+    manifestItems.push({
+        id: "nav",
+        href: "nav.xhtml",
+        mediaType: "application/xhtml+xml",
+        properties: "nav"
+    });
+
+    // content.opf
+    const uniqueId = "urn:uuid:" + generateUUIDv4();
+    const contentOpf = buildContentOpf({
+        id: uniqueId,
+        title: bookMetadata.title || "Untitled",
+        author: bookMetadata.author || "Unknown Author",
+        lang: lang,
+        date: new Date().toISOString().slice(0, 10),
+        manifestItems: manifestItems,
+        spineItemrefs: spineItemrefs
+    });
+    oebps.file("content.opf", contentOpf);
+
+    updateProgress(86);
+
+    // Генерируем EPUB
+    return await zip.generateAsync({
+        type: "blob",
+        compression: "DEFLATE",
+        compressionOptions: { level: 9 }
+    });
+}
+
+// ============================================================
+// Вспомогательные функции
+// ============================================================
+
+function updateProgress(val) {
+    const progressBar = document.getElementById('converterProgressBar');
+    if (progressBar) {
+        progressBar.style.width = `${val}%`;
+        progressBar.textContent = `${val}%`;
+    }
+}
+
+function textContentDeep(node) {
+    if (node.nodeType === 3) return node.nodeValue || "";
+    let s = "";
+    node.childNodes.forEach((n) => (s += textContentDeep(n)));
+    return s;
+}
+
+function escapeXML(s) {
+    return s
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+}
+
+function serializeInline(node, binaries) {
+    if (node.nodeType === 3) {
+        return escapeXML(node.nodeValue || "");
+    }
+    if (node.nodeType !== 1) return "";
+
+    const tag = node.tagName.toLowerCase();
+    const children = [...node.childNodes]
+        .map((n) => serializeInline(n, binaries))
+        .join("");
+
+    switch (tag) {
+        case "emphasis": return `<em>${children}</em>`;
+        case "strong": return `<strong>${children}</strong>`;
+        case "code": return `<code>${children}</code>`;
+        case "sub": return `<sub>${children}</sub>`;
+        case "sup": return `<sup>${children}</sup>`;
+        case "strikethrough": return `<s>${children}</s>`;
+        case "a": {
+            const href = node.getAttribute("xlink:href") || node.getAttribute("href") || "";
+            const safeHref = href.startsWith("#") ? href : escapeXML(href);
+            return `<a href="${escapeXML(safeHref)}">${children || escapeXML(node.textContent)}</a>`;
+        }
+        case "image": {
+            const href = (node.getAttribute("xlink:href") || "").replace(/^#/, "");
+            if (href && binaries[href]) {
+                const ext = binaries[href].ext || "jpg";
+                return `<img alt="" src="images/${href}.${ext}" />`;
+            }
+            return "";
+        }
+        default:
+            return children;
+    }
+}
+
+function serializeSectionToXHTML(section, binaries) {
+    let html = "";
+    const nodes = [...section.childNodes];
+
+    const titleNode = section.querySelector(":scope > title");
+    if (titleNode) {
+        const t = titleNode.querySelector("p")
+            ? [...titleNode.querySelectorAll("p")].map((p) => serializeInline(p, binaries)).join(" ")
+            : escapeXML(textContentDeep(titleNode).trim());
+        html += `<h2>${t}</h2>`;
+    }
+
+    for (const node of nodes) {
+        if (node.nodeType !== 1) continue;
+        const tag = node.tagName.toLowerCase();
+        if (tag === "title") continue;
+
+        if (tag === "p") {
+            html += `<p>${serializeInline(node, binaries)}</p>`;
+        } else if (tag === "subtitle") {
+            html += `<h3>${serializeInline(node, binaries)}</h3>`;
+        } else if (tag === "epigraph") {
+            const inner = [...node.querySelectorAll("p")].map((p) => serializeInline(p, binaries)).join("");
+            html += `<blockquote>${inner}</blockquote>`;
+        } else if (tag === "cite") {
+            const inner = [...node.childNodes].map((n) => serializeInline(n, binaries)).join("");
+            html += `<blockquote>${inner}</blockquote>`;
+        } else if (tag === "poem") {
+            html += `<div class="poem">`;
+            const title = node.querySelector(":scope > title");
+            if (title) html += `<h3>${serializeInline(title, binaries)}</h3>`;
+            node.querySelectorAll(":scope > stanza").forEach((st) => {
+                html += `<div class="stanza">`;
+                st.querySelectorAll(":scope > v").forEach((v) => {
+                    html += `<div>${serializeInline(v, binaries)}</div>`;
+                });
+                html += `</div>`;
+            });
+            const author = node.querySelector(":scope > text-author");
+            if (author) html += `<div class="text-right italic">${serializeInline(author, binaries)}</div>`;
+            html += `</div>`;
+        } else if (tag === "empty-line") {
+            html += `<hr />`;
+        } else if (tag === "image") {
+            const href = (node.getAttribute("xlink:href") || "").replace(/^#/, "");
+            if (href && binaries[href]) {
+                const ext = binaries[href].ext || "jpg";
+                html += `<p><img alt="" src="images/${href}.${ext}" /></p>`;
+            }
+        } else if (tag === "section") {
+            html += serializeSectionToXHTML(node, binaries);
+        } else {
+            html += `<p>${serializeInline(node, binaries)}</p>`;
+        }
+    }
+    return html || "<p></p>";
+}
+
+function wrapAsXHTML(title, bodyContent, lang) {
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="${escapeXML(lang)}" lang="${escapeXML(lang)}">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>${escapeXML(title)}</title>
+  <link rel="stylesheet" type="text/css" href="styles.css" />
+</head>
+<body>
+  <h1>${escapeXML(title)}</h1>
+  ${bodyContent}
+</body>
+</html>`;
+}
+
+function buildNavXHTML(bookTitle, chapters, lang) {
+    const lis = chapters.map((ch, i) =>
+        `<li><a href="chapter-${i + 1}.xhtml">${escapeXML(ch.title)}</a></li>`
+    ).join("\n");
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" xml:lang="${escapeXML(lang)}" lang="${escapeXML(lang)}">
+<head>
+  <meta charset="UTF-8" />
+  <title>Table of Contents</title>
+  <link rel="stylesheet" type="text/css" href="styles.css" />
+</head>
+<body>
+  <nav epub:type="toc" id="toc">
+    <h2>${escapeXML(bookTitle)}</h2>
+    <ol>
+      ${lis}
+    </ol>
+  </nav>
+</body>
+</html>`;
+}
+
+function buildContentOpf({ id, title, author, lang, date, manifestItems, spineItemrefs }) {
+    const manifestXml = manifestItems.map((it) => {
+        const props = it.properties ? ` properties="${it.properties}"` : "";
+        return `<item id="${escapeXML(it.id)}" href="${escapeXML(it.href)}" media-type="${escapeXML(it.mediaType)}"${props} />`;
+    }).join("\n      ");
+    const spineXml = spineItemrefs.map((sr) => `<itemref idref="${escapeXML(sr.idref)}" />`).join("\n      ");
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" unique-identifier="pub-id" version="3.0" xml:lang="${escapeXML(lang)}">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:identifier id="pub-id">${escapeXML(id)}</dc:identifier>
+    <dc:title>${escapeXML(title)}</dc:title>
+    <dc:language>${escapeXML(lang)}</dc:language>
+    <dc:creator>${escapeXML(author)}</dc:creator>
+    <dc:date>${escapeXML(date)}</dc:date>
+    <meta property="dcterms:modified">${new Date().toISOString().replace(/\.\d+Z$/, "Z")}</meta>
+  </metadata>
+  <manifest>
+      ${manifestXml}
+  </manifest>
+  <spine>
+      ${spineXml}
+  </spine>
+</package>`;
+}
+
+function mimeToExt(mime) {
+    if (!mime) return "jpg";
+    if (mime.includes("jpeg") || mime.includes("jpg")) return "jpg";
+    if (mime.includes("png")) return "png";
+    if (mime.includes("gif")) return "gif";
+    if (mime.includes("svg")) return "svg";
+    if (mime.includes("webp")) return "webp";
+    return "bin";
+}
+
+function base64ToUint8Array(base64) {
+    const binaryString = atob(base64);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) bytes[i] = binaryString.charCodeAt(i);
+    return bytes;
+}
+
+function generateUUIDv4() {
+    const rnd = crypto.getRandomValues(new Uint8Array(16));
+    rnd[6] = (rnd[6] & 0x0f) | 0x40;
+    rnd[8] = (rnd[8] & 0x3f) | 0x80;
+    const hex = [...rnd].map((b) => b.toString(16).padStart(2, "0")).join("");
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+
+
+
+
+
+
+
+
+
+
 </script>
 
 <?php require 'templates/footer.php'; ?>

@@ -34,8 +34,8 @@ class SessionManager
     public static function getCsrfToken()
     {
         self::start();
-	
-	 if (empty($_SESSION['csrf_token'])) {
+
+        if (empty($_SESSION['csrf_token'])) {
             $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
         }
 
@@ -60,9 +60,9 @@ class SessionManager
 
 
 
-     /**
-     * Получить значение из сессии
-     */
+    /**
+    * Получить значение из сессии
+    */
     public static function get($key, $default = null)
     {
         self::start();

@@ -344,29 +344,29 @@ class SettingsManager
     {
         $settings = [];
 
-// Список всех полей, которые нужно сохранять
-    $allFields = [
-        // Site settings
-        'SITE_TITLE', 'ITEMS_PER_PAGE',
+        // Список всех полей, которые нужно сохранять
+        $allFields = [
+            // Site settings
+            'SITE_TITLE', 'ITEMS_PER_PAGE',
 
-        // OPDS settings
-        'OPDS_TITLE', 'OPDS_AUTHOR', 'OPDS_ID', 'OPDS_DEFAULT_LANG', // <- Добавьте эту строку
+            // OPDS settings
+            'OPDS_TITLE', 'OPDS_AUTHOR', 'OPDS_ID', 'OPDS_DEFAULT_LANG', // <- Добавьте эту строку
 
-        // Cache settings
-        'ENABLE_CACHE', 'USE_APCU', 'CACHE_TTL', 'PAGE_CACHE_ENABLED',
+            // Cache settings
+            'ENABLE_CACHE', 'USE_APCU', 'CACHE_TTL', 'PAGE_CACHE_ENABLED',
 
-        // Database settings
-        'DB_TYPE', 'DB_HOST', 'DB_NAME', 'DB_USER', 'DB_PASS', 'DB_PATH',
+            // Database settings
+            'DB_TYPE', 'DB_HOST', 'DB_NAME', 'DB_USER', 'DB_PASS', 'DB_PATH',
 
-        // Paths
-        'BOOKS_DIR', 'CACHE_DIR', 'COVER_CACHE_DIR', 'SCANNER_PATH',
+            // Paths
+            'BOOKS_DIR', 'CACHE_DIR', 'COVER_CACHE_DIR', 'SCANNER_PATH',
 
-        // Performance
-        'MEMORY_LIMIT', 'MAX_SEARCH_RESULTS',
+            // Performance
+            'MEMORY_LIMIT', 'MAX_SEARCH_RESULTS',
 
-        // Security
-        'ADMIN_USER', 'ADMIN_ALLOWED_IPS'
-    ];
+            // Security
+            'ADMIN_USER', 'ADMIN_ALLOWED_IPS'
+        ];
 
 
         // Обновляем из POST

@@ -1,6 +1,10 @@
 <?php
 // templates/header.php
 
+
+require_once __DIR__ . '/../csp.php';
+
+
 // Получаем базовый путь без учета админки
 $scriptPath = $_SERVER['SCRIPT_NAME'];
 $basePath = rtrim(dirname(dirname($scriptPath)), '/');
@@ -154,7 +158,7 @@ $langFlag = $detector->getLanguageFlag();
 <body>
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container">
-            <a class="navbar-brand" href="<?php echo $basePath; ?>/index.php">
+            <a class="navbar-brand" href="<?php echo $basePath; ?>/">
 		<?php echo htmlspecialchars(Config::getSiteTitle()); ?>
 
 
@@ -166,7 +170,7 @@ $langFlag = $detector->getLanguageFlag();
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav me-auto">
                     <li class="nav-item">
-                        <a class="nav-link" href="<?php echo $basePath; ?>/index.php">
+                        <a class="nav-link" href="<?php echo $basePath; ?>/">
                             <?php echo __('home'); ?>
                         </a>
                     </li>

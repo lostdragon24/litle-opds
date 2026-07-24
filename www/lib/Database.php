@@ -44,7 +44,7 @@ class Database
                     $this->pdo = new PDO($dsn);
                     $this->pdo->exec('PRAGMA journal_mode = WAL');
                     $this->pdo->exec('PRAGMA synchronous = NORMAL');
-		    $this->pdo->exec('PRAGMA cache = shared');
+                    $this->pdo->exec('PRAGMA cache = shared');
                     $this->pdo->exec('PRAGMA cache_size = -64000');
                     $this->pdo->exec('PRAGMA temp_store = memory');
                     $this->pdo->exec('PRAGMA mmap_size = 268435456');
@@ -146,13 +146,14 @@ class Database
     {
         if (!$this->isAvailable()) {
             my_log("Query skipped - database unavailable: " . $sql);
-            return new EmptyPDOStatement();
+            return false;
         }
 
         $this->queryCount++;
 
         if (Config::isQuerylogging() && Config::isDevelopment()) {
-            my_log("DB Query: " . $sql . " | Params: " . json_encode($params));
+            my_log("DB Query: " . $sql);
+            my_log("Params: " . json_encode($params));
         }
 
         $startTime = microtime(true);
@@ -160,6 +161,7 @@ class Database
         try {
             $stmt = $this->pdo->prepare($sql);
 
+            // ===== ВАЖНО: правильная передача параметров =====
             foreach ($params as $index => $value) {
                 $paramType = PDO::PARAM_STR;
                 if (is_int($value)) {
@@ -170,6 +172,7 @@ class Database
                     $paramType = PDO::PARAM_NULL;
                 }
 
+                // PDO использует 1-индексацию для позиционных параметров
                 $stmt->bindValue($index + 1, $value, $paramType);
             }
 
@@ -183,17 +186,18 @@ class Database
             return $stmt;
 
         } catch (PDOException $e) {
-            my_log("Query failed: " . $sql . " | Error: " . $e->getMessage());
-            throw new Exception(__('error_db_query'));
+            my_log("Query failed: " . $sql);
+            my_log("Error: " . $e->getMessage());
+            throw new Exception(__('error_db_query') . ': ' . $e->getMessage());
         }
     }
 
     /**
      * Поиск книг с использованием FULLTEXT индекса
      */
-    public function searchBooks($query, $field = 'all', $page = 1, $perPage = null)
+    public function searchBooks($query, $field = 'all', $page = 1, $perPage = null, $filters = [])
     {
-        if ($perPage === null) {
+        if (null === $perPage) {
             $perPage = Config::getItemsPerPage();
         }
 
@@ -204,68 +208,121 @@ class Database
             'query' => $query,
             'field' => $field,
             'page' => $page,
-            'perPage' => $perPage
+            'perPage' => $perPage,
+            'filters' => $filters
         ]);
 
         $cached = Cache::get($cacheKey, 'search_results');
-        if ($cached !== null) {
-            $this->cacheHits++;
+        if (null !== $cached) {
+            ++$this->cacheHits;
             return $cached;
         }
-        $this->cacheMisses++;
+        ++$this->cacheMisses;
 
         $offset = (int)(($page - 1) * $perPage);
         $perPage = min((int)$perPage, 100);
 
         // Пытаемся использовать FULLTEXT поиск для MySQL
-        if (Config::isMysql() === 'mysql' && strlen($query) >= 3 && Config::SEARCH_OPTIMIZATION['enable_fulltext']) {
-            return $this->searchBooksFulltext($query, $field, $offset, $perPage);
+        if (Config::isMysql() && strlen($query) >= 3 && Config::SEARCH_OPTIMIZATION['enable_fulltext']) {
+            return $this->searchBooksFulltext($query, $field, $offset, $perPage, $filters);
         }
 
         // Fallback на LIKE поиск
-        return $this->searchBooksLike($query, $field, $offset, $perPage, $cacheKey);
+        return $this->searchBooksLike($query, $field, $offset, $perPage, $cacheKey, $filters);
     }
 
+
     /**
-     * FULLTEXT поиск (быстрый)
+     * Найти коды жанров по читаемому названию
      */
-    private function searchBooksFulltext($query, $field, $offset, $perPage)
+    private function findGenreCodesByName($name)
     {
-        try {
-            $searchTerms = $this->prepareFulltextTerms($query);
+        $codes = [];
+        $name = mb_strtolower(trim($name), 'UTF-8');
 
-            $sql = "SELECT *, MATCH(title, author, genre, series) AGAINST(? IN BOOLEAN MODE) as relevance 
-                    FROM books 
-                    WHERE MATCH(title, author, genre, series) AGAINST(? IN BOOLEAN MODE)";
+        // Получаем все жанры
+        $allGenres = GenreManager::getAllGenres();
 
-            if ($field !== 'all') {
-                // Для конкретного поля используем дополнительный фильтр
-                $sql .= " AND $field LIKE ?";
-                $likeTerm = "%{$query}%";
-                $stmt = $this->executeQuery(
-                    $sql . " ORDER BY relevance DESC LIMIT ? OFFSET ?",
-                    [$searchTerms, $searchTerms, $likeTerm, $perPage, $offset]
-                );
-            } else {
-                $stmt = $this->executeQuery(
-                    $sql . " ORDER BY relevance DESC LIMIT ? OFFSET ?",
-                    [$searchTerms, $searchTerms, $perPage, $offset]
-                );
+        foreach ($allGenres as $code => $readable) {
+            $readableLower = mb_strtolower($readable, 'UTF-8');
+            $codeLower = mb_strtolower($code, 'UTF-8');
+
+            // Точное совпадение по названию
+            if ($readableLower === $name) {
+                $codes[] = $code;
             }
-
-            return $stmt->fetchAll();
-        } catch (Exception $e) {
-            my_log("Fulltext search failed, falling back to LIKE: " . $e->getMessage());
-            return $this->searchBooksLike($query, $field, $offset, $perPage);
+            // Частичное совпадение по названию (если не нашли точное)
+            elseif (empty($codes) && strpos($readableLower, $name) !== false) {
+                $codes[] = $code;
+            }
+            // Совпадение по коду (если пользователь ввёл код)
+            elseif ($codeLower === $name) {
+                $codes[] = $code;
+            }
         }
+
+        return array_unique($codes);
     }
 
+
     /**
-     * LIKE поиск (медленный, но надежный)
+     * Получить количество результатов поиска
      */
-    private function searchBooksLike($query, $field, $offset, $perPage, $cacheKey = null)
+    public function getSearchCount($query, $field = 'all', $filters = [])
     {
-        $sql = "SELECT * FROM books WHERE 1=1";
+        if (empty($query)) {
+            return $this->getTotalBooksCount();
+        }
+
+        $cacheKey = $this->getCacheKey('search_count_v2', [
+            'query' => $query,
+            'field' => $field,
+            'filters' => $filters
+        ]);
+
+        $cached = Cache::get($cacheKey, 'statistics');
+        if (null !== $cached) {
+            ++$this->cacheHits;
+            return $cached;
+        }
+        ++$this->cacheMisses;
+
+        $query = $this->security->sanitizeSearchQuery($query);
+        $field = $this->security->sanitizeSearchField($field);
+
+        // Используем приблизительный подсчет для больших таблиц
+        if (Config::isMysql() && $this->getTotalBooksCount() > 10000) {
+            try {
+                $searchTerms = $this->prepareFulltextTerms($query);
+                $sql = 'SELECT COUNT(*) as count FROM books
+                    WHERE MATCH(title, author, genre, series) AGAINST(? IN BOOLEAN MODE)';
+                $params = [$searchTerms];
+
+                // Фильтры
+                if (!empty($filters['lang'])) {
+                    $sql .= ' AND language = ?';
+                    $params[] = $filters['lang'];
+                }
+
+                if (!empty($filters['format'])) {
+                    $sql .= ' AND file_type = ?';
+                    $params[] = $filters['format'];
+                }
+
+                $stmt = $this->executeQuery($sql, $params);
+                $result = $stmt->fetch();
+                $count = $result['count'] ?? 0;
+
+                Cache::set($cacheKey, $count, 'statistics');
+                return $count;
+
+            } catch (Exception $e) {
+                // Fallback на LIKE
+            }
+        }
+
+        // LIKE подсчет
+        $sql = 'SELECT COUNT(*) as count FROM books WHERE 1=1';
         $params = [];
 
         if (!empty($query)) {
@@ -273,29 +330,142 @@ class Database
 
             switch ($field) {
                 case 'author':
-                    $sql .= " AND author LIKE ?";
+                    $sql .= ' AND author LIKE ?';
                     $params[] = $searchTerm;
                     break;
                 case 'title':
-                    $sql .= " AND title LIKE ?";
+                    $sql .= ' AND title LIKE ?';
                     $params[] = $searchTerm;
                     break;
                 case 'genre':
-                    $sql .= " AND genre LIKE ?";
+                    $sql .= ' AND genre LIKE ?';
                     $params[] = $searchTerm;
                     break;
                 case 'series':
-                    $sql .= " AND series LIKE ?";
+                    $sql .= ' AND series LIKE ?';
                     $params[] = $searchTerm;
                     break;
                 default:
-                    $sql .= " AND (author LIKE ? OR title LIKE ? OR genre LIKE ? OR series LIKE ?)";
+                    $sql .= ' AND (author LIKE ? OR title LIKE ? OR genre LIKE ? OR series LIKE ?)';
                     $params = array_fill(0, 4, $searchTerm);
                     break;
             }
         }
 
-        $sql .= " ORDER BY added_date DESC LIMIT ? OFFSET ?";
+        // Фильтры
+        if (!empty($filters['lang'])) {
+            $sql .= ' AND language = ?';
+            $params[] = $filters['lang'];
+        }
+
+        if (!empty($filters['format'])) {
+            $sql .= ' AND file_type = ?';
+            $params[] = $filters['format'];
+        }
+
+        $stmt = $this->executeQuery($sql, $params);
+        $result = $stmt->fetch();
+        $count = $result['count'] ?? 0;
+
+        Cache::set($cacheKey, $count, 'statistics');
+
+        return $count;
+    }
+
+    /**
+     * FULLTEXT поиск (быстрый)
+     */
+    private function searchBooksFulltext($query, $field, $offset, $perPage, $filters = [])
+    {
+        try {
+            $searchTerms = $this->prepareFulltextTerms($query);
+
+            $sql = 'SELECT *, MATCH(title, author, genre, series) AGAINST(? IN BOOLEAN MODE) as relevance
+                FROM books
+                WHERE MATCH(title, author, genre, series) AGAINST(? IN BOOLEAN MODE)';
+
+            $params = [$searchTerms, $searchTerms];
+
+            // Фильтры
+            if (!empty($filters['lang'])) {
+                $sql .= ' AND language = ?';
+                $params[] = $filters['lang'];
+            }
+
+            if (!empty($filters['format'])) {
+                $sql .= ' AND file_type = ?';
+                $params[] = $filters['format'];
+            }
+
+            if ($field !== 'all') {
+                $sql .= " AND $field LIKE ?";
+                $params[] = "%{$query}%";
+            }
+
+            $orderBy = $this->buildOrderBy($filters['sort'] ?? 'new');
+            $sql .= " {$orderBy} LIMIT ? OFFSET ?";
+            $params[] = $perPage;
+            $params[] = $offset;
+
+            $stmt = $this->executeQuery($sql, $params);
+            return $stmt->fetchAll();
+
+        } catch (Exception $e) {
+            error_log('Fulltext search failed, falling back to LIKE: ' . $e->getMessage());
+            return $this->searchBooksLike($query, $field, $offset, $perPage, null, $filters);
+        }
+    }
+
+    /**
+     * LIKE поиск (медленный, но надежный)
+     */
+    private function searchBooksLike($query, $field, $offset, $perPage, $cacheKey = null, $filters = [])
+    {
+        $sql = 'SELECT * FROM books WHERE 1=1';
+        $params = [];
+
+        // ===== ПОИСК ПО ЗАПРОСУ (как работало) =====
+        if (!empty($query)) {
+            $searchTerm = "%{$query}%";
+
+            switch ($field) {
+                case 'author':
+                    $sql .= ' AND author LIKE ?';
+                    $params[] = $searchTerm;
+                    break;
+                case 'title':
+                    $sql .= ' AND title LIKE ?';
+                    $params[] = $searchTerm;
+                    break;
+                case 'genre':
+                    $sql .= ' AND genre LIKE ?';
+                    $params[] = $searchTerm;
+                    break;
+                case 'series':
+                    $sql .= ' AND series LIKE ?';
+                    $params[] = $searchTerm;
+                    break;
+                default:
+                    $sql .= ' AND (author LIKE ? OR title LIKE ? OR genre LIKE ? OR series LIKE ?)';
+                    $params = array_fill(0, 4, $searchTerm);
+                    break;
+            }
+        }
+
+        // ===== ФИЛЬТРЫ (добавляем аккуратно) =====
+        if (!empty($filters['lang'])) {
+            $sql .= ' AND language = ?';
+            $params[] = $filters['lang'];
+        }
+
+        if (!empty($filters['format'])) {
+            $sql .= ' AND file_type = ?';
+            $params[] = $filters['format'];
+        }
+
+        // ===== СОРТИРОВКА =====
+        $orderBy = $this->buildOrderBy($filters['sort'] ?? 'new');
+        $sql .= " {$orderBy} LIMIT ? OFFSET ?";
         $params[] = $perPage;
         $params[] = $offset;
 
@@ -326,88 +496,6 @@ class Database
         return implode(' ', $terms);
     }
 
-    /**
-     * Получить количество результатов поиска (оптимизировано)
-     */
-    public function getSearchCount($query, $field = 'all')
-    {
-        if (empty($query)) {
-            return $this->getTotalBooksCount();
-        }
-
-        $cacheKey = $this->getCacheKey('search_count_v2', [
-            'query' => $query,
-            'field' => $field
-        ]);
-
-        $cached = Cache::get($cacheKey, 'statistics');
-        if ($cached !== null) {
-            $this->cacheHits++;
-            return $cached;
-        }
-        $this->cacheMisses++;
-
-        $query = $this->security->sanitizeSearchQuery($query);
-        $field = $this->security->sanitizeSearchField($field);
-
-        // Используем приблизительный подсчет для больших таблиц
-        if (Config::isMysql() === 'mysql' && $this->getTotalBooksCount() > 10000) {
-            try {
-                $searchTerms = $this->prepareFulltextTerms($query);
-                $stmt = $this->executeQuery(
-                    "SELECT COUNT(*) as count FROM books 
-                     WHERE MATCH(title, author, genre, series) AGAINST(? IN BOOLEAN MODE)",
-                    [$searchTerms]
-                );
-                $result = $stmt->fetch();
-                $count = $result['count'] ?? 0;
-
-                Cache::set($cacheKey, $count, 'statistics');
-                return $count;
-            } catch (Exception $e) {
-                // Fallback на LIKE
-            }
-        }
-
-        // LIKE подсчет
-        $sql = "SELECT COUNT(*) as count FROM books WHERE 1=1";
-        $params = [];
-
-        if (!empty($query)) {
-            $searchTerm = "%{$query}%";
-
-            switch ($field) {
-                case 'author':
-                    $sql .= " AND author LIKE ?";
-                    $params[] = $searchTerm;
-                    break;
-                case 'title':
-                    $sql .= " AND title LIKE ?";
-                    $params[] = $searchTerm;
-                    break;
-                case 'genre':
-                    $sql .= " AND genre LIKE ?";
-                    $params[] = $searchTerm;
-                    break;
-                case 'series':
-                    $sql .= " AND series LIKE ?";
-                    $params[] = $searchTerm;
-                    break;
-                default:
-                    $sql .= " AND (author LIKE ? OR title LIKE ? OR genre LIKE ? OR series LIKE ?)";
-                    $params = array_fill(0, 4, $searchTerm);
-                    break;
-            }
-        }
-
-        $stmt = $this->executeQuery($sql, $params);
-        $result = $stmt->fetch();
-        $count = $result['count'] ?? 0;
-
-        Cache::set($cacheKey, $count, 'statistics');
-
-        return $count;
-    }
 
     /**
      * Получить книгу по ID (с кэшированием)
@@ -438,14 +526,15 @@ class Database
     /**
      * Получить последние добавленные книги (оптимизировано)
      */
-    public function getRecentBooks($limit = 10, $offset = 0)
+    public function getRecentBooks($limit = 10, $offset = 0, $filters = [])
     {
         $limit = min((int)$limit, 100);
         $offset = (int)$offset;
 
         $cacheKey = $this->getCacheKey('recent_books_v2', [
             'limit' => $limit,
-            'offset' => $offset
+            'offset' => $offset,
+            'filters' => $filters
         ]);
 
         $cached = Cache::get($cacheKey, 'search_results');
@@ -455,48 +544,56 @@ class Database
         }
         $this->cacheMisses++;
 
-        // Используем индекс idx_added_date
-        //    $sql = "SELECT id, title, author, series, series_number, genre, file_type,
-        //                   added_date, archive_path, year
-        //            FROM books
-        //            ORDER BY added_date DESC
-        //            LIMIT ? OFFSET ?";
-        $sql = "SELECT * FROM books ORDER BY added_date DESC LIMIT ? OFFSET ?";
+        $sql = "SELECT * FROM books WHERE 1=1";
+        $params = [];
 
+        // Фильтры
+        if (!empty($filters['lang'])) {
+            $sql .= ' AND language = ?';
+            $params[] = $filters['lang'];
+        }
 
+        if (!empty($filters['format'])) {
+            $sql .= ' AND file_type = ?';
+            $params[] = $filters['format'];
+        }
 
-        $stmt = $this->executeQuery($sql, [$limit, $offset]);
+        $orderBy = $this->buildOrderBy($filters['sort'] ?? 'new');
+        $sql .= " {$orderBy} LIMIT ? OFFSET ?";
+        $params[] = $limit;
+        $params[] = $offset;
+
+        $stmt = $this->executeQuery($sql, $params);
         $result = $stmt->fetchAll();
 
-        Cache::set($cacheKey, $result, 'search_results', 300); // Кэш на 5 минут
+        Cache::set($cacheKey, $result, 'search_results', 300);
 
         return $result;
     }
 
+    /**
+     * Получить рейтинги для нескольких книг одним запросом
+     */
+    public function getRatingsForBooks($bookIds)
+    {
+        if (empty($bookIds)) {
+            return [];
+        }
 
-/**
- * Получить рейтинги для нескольких книг одним запросом
- */
-public function getRatingsForBooks($bookIds)
-{
-    if (empty($bookIds)) {
-        return [];
-    }
+        // Сортируем ID для консистентности ключа
+        sort($bookIds);
+        $cacheKey = 'ratings_batch_' . md5(implode(',', $bookIds));
 
-    // Сортируем ID для консистентности ключа
-    sort($bookIds);
-    $cacheKey = 'ratings_batch_' . md5(implode(',', $bookIds));
+        $cached = Cache::get($cacheKey, 'statistics');
+        if ($cached !== null) {
+            $this->cacheHits++;
+            return $cached;
+        }
+        $this->cacheMisses++;
 
-    $cached = Cache::get($cacheKey, 'statistics');
-    if ($cached !== null) {
-        $this->cacheHits++;
-        return $cached;
-    }
-    $this->cacheMisses++;
+        $placeholders = implode(',', array_fill(0, count($bookIds), '?'));
 
-    $placeholders = implode(',', array_fill(0, count($bookIds), '?'));
-
-    $sql = "SELECT
+        $sql = "SELECT
                 book_id,
                 COUNT(*) as votes,
                 AVG(rating) as average
@@ -504,36 +601,36 @@ public function getRatingsForBooks($bookIds)
             WHERE book_id IN ($placeholders)
             GROUP BY book_id";
 
-    $stmt = $this->executeQuery($sql, $bookIds);
-    $results = $stmt->fetchAll();
+        $stmt = $this->executeQuery($sql, $bookIds);
+        $results = $stmt->fetchAll();
 
-    $ratings = [];
-    foreach ($results as $row) {
-        $ratings[$row['book_id']] = [
-            'votes' => (int)$row['votes'],
-            'average' => (float)$row['average'],
-            'average_rounded' => round((float)$row['average'] * 2) / 2
-        ];
-    }
-
-    // Добавляем пустые рейтинги для книг без оценок
-    foreach ($bookIds as $id) {
-        if (!isset($ratings[$id])) {
-            $ratings[$id] = [
-                'votes' => 0,
-                'average' => 0,
-                'average_rounded' => 0
+        $ratings = [];
+        foreach ($results as $row) {
+            $ratings[$row['book_id']] = [
+                'votes' => (int)$row['votes'],
+                'average' => (float)$row['average'],
+                'average_rounded' => round((float)$row['average'] * 2) / 2
             ];
         }
+
+        // Добавляем пустые рейтинги для книг без оценок
+        foreach ($bookIds as $id) {
+            if (!isset($ratings[$id])) {
+                $ratings[$id] = [
+                    'votes' => 0,
+                    'average' => 0,
+                    'average_rounded' => 0
+                ];
+            }
+        }
+
+        Cache::set($cacheKey, $ratings, 'statistics', 300); // Кэш на 5 минут
+
+        // Индексируем ключ для последующей инвалидации
+        $this->indexRatingBatchKey($cacheKey);
+
+        return $ratings;
     }
-
-    Cache::set($cacheKey, $ratings, 'statistics', 300); // Кэш на 5 минут
-
-    // Индексируем ключ для последующей инвалидации
-    $this->indexRatingBatchKey($cacheKey);
-
-    return $ratings;
-}
 
     /**
      * Получить статус избранного для нескольких книг одним запросом
@@ -573,52 +670,52 @@ public function getRatingsForBooks($bookIds)
         return $favorites;
     }
 
-/**
- * Получить статистику коллекции (оптимизированная версия)
- */
-public function getCollectionStats()
-{
-    $cacheKey = 'collection_stats_v4'; // Обновляем версию
+    /**
+     * Получить статистику коллекции (оптимизированная версия)
+     */
+    public function getCollectionStats()
+    {
+        $cacheKey = 'collection_stats_v4'; // Обновляем версию
 
-    $cached = Cache::get($cacheKey, 'statistics');
-    if ($cached !== null) {
-        $this->cacheHits++;
-        return $cached;
-    }
-    $this->cacheMisses++;
+        $cached = Cache::get($cacheKey, 'statistics');
+        if ($cached !== null) {
+            $this->cacheHits++;
+            return $cached;
+        }
+        $this->cacheMisses++;
 
-    $dbType = Config::getDbType();
+        $dbType = Config::getDbType();
 
-    if ($dbType === 'mysql') {
-        // Для MySQL используем более быстрые запросы
-        $stats = $this->getMySQLStatsOptimized();
-    } else {
-        // Для SQLite
-        $stats = $this->getSQLiteStats();
-    }
+        if ($dbType === 'mysql') {
+            // Для MySQL используем более быстрые запросы
+            $stats = $this->getMySQLStatsOptimized();
+        } else {
+            // Для SQLite
+            $stats = $this->getSQLiteStats();
+        }
 
-    // Статистика по форматам (общая для обоих типов БД)
-    $stmt = $this->executeQuery("
+        // Статистика по форматам (общая для обоих типов БД)
+        $stmt = $this->executeQuery("
         SELECT file_type, COUNT(*) as count
         FROM books
         WHERE file_type IS NOT NULL
         GROUP BY file_type
         ORDER BY count DESC
     ");
-    $stats['file_types'] = $stmt->fetchAll();
+        $stats['file_types'] = $stmt->fetchAll();
 
-    Cache::set($cacheKey, $stats, 'statistics', 7200); // Увеличиваем до 2 часов
+        Cache::set($cacheKey, $stats, 'statistics', 7200); // Увеличиваем до 2 часов
 
-    return $stats;
-}
+        return $stats;
+    }
 
-/**
- * Оптимизированная статистика для MySQL
- */
-private function getMySQLStatsOptimized()
-{
-    // Используем один запрос для всей статистики
-    $sql = "SELECT
+    /**
+     * Оптимизированная статистика для MySQL
+     */
+    private function getMySQLStatsOptimized()
+    {
+        // Используем один запрос для всей статистики
+        $sql = "SELECT
                 (SELECT COUNT(*) FROM books) as total_books,
                 (SELECT COUNT(DISTINCT author) FROM books WHERE author IS NOT NULL AND author != '') as total_authors,
                 (SELECT COUNT(DISTINCT genre) FROM books WHERE genre IS NOT NULL AND genre != '') as total_genres,
@@ -632,32 +729,32 @@ private function getMySQLStatsOptimized()
                 (SELECT COUNT(DISTINCT book_id) FROM book_favorites) as favorited_books,
                 (SELECT COUNT(DISTINCT user_ip) FROM book_favorites) as users_with_favorites";
 
-    $stmt = $this->executeQuery($sql);
-    $stats = $stmt->fetch();
+        $stmt = $this->executeQuery($sql);
+        $stats = $stmt->fetch();
 
-    // Преобразуем в нужный формат
-    return [
-        'total_books' => (int)$stats['total_books'],
-        'total_authors' => (int)$stats['total_authors'],
-        'total_genres' => (int)$stats['total_genres'],
-        'total_series' => (int)$stats['total_series'],
-        'last_update' => $stats['last_update'],
-        'books_in_archives' => (int)$stats['books_in_archives'],
-        'total_ratings' => (int)$stats['total_ratings'],
-        'rated_books' => (int)$stats['rated_books'],
-        'unique_voters' => (int)$stats['unique_voters'],
-        'total_favorites' => (int)$stats['total_favorites'],
-        'favorited_books' => (int)$stats['favorited_books'],
-        'users_with_favorites' => (int)$stats['users_with_favorites']
-    ];
-}
+        // Преобразуем в нужный формат
+        return [
+            'total_books' => (int)$stats['total_books'],
+            'total_authors' => (int)$stats['total_authors'],
+            'total_genres' => (int)$stats['total_genres'],
+            'total_series' => (int)$stats['total_series'],
+            'last_update' => $stats['last_update'],
+            'books_in_archives' => (int)$stats['books_in_archives'],
+            'total_ratings' => (int)$stats['total_ratings'],
+            'rated_books' => (int)$stats['rated_books'],
+            'unique_voters' => (int)$stats['unique_voters'],
+            'total_favorites' => (int)$stats['total_favorites'],
+            'favorited_books' => (int)$stats['favorited_books'],
+            'users_with_favorites' => (int)$stats['users_with_favorites']
+        ];
+    }
 
-/**
- * Статистика для SQLite
- */
-private function getSQLiteStats()
-{
-    $sql = "SELECT
+    /**
+     * Статистика для SQLite
+     */
+    private function getSQLiteStats()
+    {
+        $sql = "SELECT
                 (SELECT COUNT(*) FROM books) as total_books,
                 (SELECT COUNT(DISTINCT author) FROM books WHERE author IS NOT NULL AND author != '') as total_authors,
                 (SELECT COUNT(DISTINCT genre) FROM books WHERE genre IS NOT NULL AND genre != '') as total_genres,
@@ -671,40 +768,40 @@ private function getSQLiteStats()
                 (SELECT COUNT(DISTINCT book_id) FROM book_favorites) as favorited_books,
                 (SELECT COUNT(DISTINCT user_ip) FROM book_favorites) as users_with_favorites";
 
-    $stmt = $this->executeQuery($sql);
-    $stats = $stmt->fetch();
+        $stmt = $this->executeQuery($sql);
+        $stats = $stmt->fetch();
 
-    return [
-        'total_books' => (int)$stats['total_books'],
-        'total_authors' => (int)$stats['total_authors'],
-        'total_genres' => (int)$stats['total_genres'],
-        'total_series' => (int)$stats['total_series'],
-        'last_update' => $stats['last_update'],
-        'books_in_archives' => (int)$stats['books_in_archives'],
-        'total_ratings' => (int)$stats['total_ratings'],
-        'rated_books' => (int)$stats['rated_books'],
-        'unique_voters' => (int)$stats['unique_voters'],
-        'total_favorites' => (int)$stats['total_favorites'],
-        'favorited_books' => (int)$stats['favorited_books'],
-        'users_with_favorites' => (int)$stats['users_with_favorites']
-    ];
-}
+        return [
+            'total_books' => (int)$stats['total_books'],
+            'total_authors' => (int)$stats['total_authors'],
+            'total_genres' => (int)$stats['total_genres'],
+            'total_series' => (int)$stats['total_series'],
+            'last_update' => $stats['last_update'],
+            'books_in_archives' => (int)$stats['books_in_archives'],
+            'total_ratings' => (int)$stats['total_ratings'],
+            'rated_books' => (int)$stats['rated_books'],
+            'unique_voters' => (int)$stats['unique_voters'],
+            'total_favorites' => (int)$stats['total_favorites'],
+            'favorited_books' => (int)$stats['favorited_books'],
+            'users_with_favorites' => (int)$stats['users_with_favorites']
+        ];
+    }
 
 
-/**
- * Принудительно обновить статистику (игнорируя кэш)
- */
-public function refreshCollectionStats()
-{
-    $cacheKey = 'collection_stats_v4';
-    Cache::delete($cacheKey);
+    /**
+     * Принудительно обновить статистику (игнорируя кэш)
+     */
+    public function refreshCollectionStats()
+    {
+        $cacheKey = 'collection_stats_v4';
+        Cache::delete($cacheKey);
 
-    // Также удаляем связанные кэши
-    Cache::delete('collection_stats_sidebar');
-    Cache::delete('total_books_count_v2');
+        // Также удаляем связанные кэши
+        Cache::delete('collection_stats_sidebar');
+        Cache::delete('total_books_count_v2');
 
-    return $this->getCollectionStats();
-}
+        return $this->getCollectionStats();
+    }
 
 
     /**
@@ -847,73 +944,73 @@ public function refreshCollectionStats()
         }
     }
 
-/**
- * Оценить книгу (с инвалидацией кэша)
- */
-public function rateBook($bookId, $rating, $userIp, $csrfToken = null)
-{
-    if (!Config::validateCsrfToken($csrfToken)) {
-        my_log("CSRF validation failed in rateBook. Token: " . ($csrfToken ?? 'null'));
-        throw new Exception('Invalid CSRF token');
-    }
+    /**
+     * Оценить книгу (с инвалидацией кэша)
+     */
+    public function rateBook($bookId, $rating, $userIp, $csrfToken = null)
+    {
+        if (!Config::validateCsrfToken($csrfToken)) {
+            my_log("CSRF validation failed in rateBook. Token: " . ($csrfToken ?? 'null'));
+            throw new Exception('Invalid CSRF token');
+        }
 
-    $rating = max(1, min(5, (int)$rating));
-    //$userIp = $this->sanitizeIp($userIp);
-    $bookId = (int)$bookId;
+        $rating = max(1, min(5, (int)$rating));
+        //$userIp = $this->sanitizeIp($userIp);
+        $bookId = (int)$bookId;
 
-    try {
-        $stmt = $this->getConnection()->prepare(
-            "SELECT id FROM book_ratings WHERE book_id = ? AND user_ip = ?"
-        );
-        $stmt->execute([$bookId, $userIp]);
-
-        if ($stmt->fetch()) {
+        try {
             $stmt = $this->getConnection()->prepare(
-                "UPDATE book_ratings SET rating = ?, created_at = CURRENT_TIMESTAMP
+                "SELECT id FROM book_ratings WHERE book_id = ? AND user_ip = ?"
+            );
+            $stmt->execute([$bookId, $userIp]);
+
+            if ($stmt->fetch()) {
+                $stmt = $this->getConnection()->prepare(
+                    "UPDATE book_ratings SET rating = ?, created_at = CURRENT_TIMESTAMP
                  WHERE book_id = ? AND user_ip = ?"
-            );
-            $stmt->execute([$rating, $bookId, $userIp]);
-            $result = 'updated';
-        } else {
-            $stmt = $this->getConnection()->prepare(
-                "INSERT INTO book_ratings (book_id, user_ip, rating) VALUES (?, ?, ?)"
-            );
-            $stmt->execute([$bookId, $userIp, $rating]);
-            $result = 'added';
-        }
-
-        // ========== УЛУЧШЕННАЯ ИНВАЛИДАЦИЯ КЭША ==========
-        // 1. Инвалидируем кэш рейтингов
-        Cache::invalidateByType('ratings');
-        Cache::invalidateByType('statistics');
-
-        // 2. ВАЖНО: Очищаем кэш топ-100 книг (все версии)
-        Cache::delete('top_rated_data_v2');
-        Cache::delete('top_rated_data_v3');
-        Cache::delete('top_rated_all_v3');
-
-        // 3. Очищаем кэш глобальной статистики рейтингов
-        Cache::delete('rating_stats_global');
-        Cache::delete('rating_stats_global_v2');
-
-        // 4. Очищаем все страницы топа в PageCache
-        if (class_exists('PageCache')) {
-            for ($i = 1; $i <= 20; $i++) {
-                Cache::delete('page_top_rated_page_' . $i);
+                );
+                $stmt->execute([$rating, $bookId, $userIp]);
+                $result = 'updated';
+            } else {
+                $stmt = $this->getConnection()->prepare(
+                    "INSERT INTO book_ratings (book_id, user_ip, rating) VALUES (?, ?, ?)"
+                );
+                $stmt->execute([$bookId, $userIp, $rating]);
+                $result = 'added';
             }
-            PageCache::invalidateUserPages($userIp);
+
+            // ========== УЛУЧШЕННАЯ ИНВАЛИДАЦИЯ КЭША ==========
+            // 1. Инвалидируем кэш рейтингов
+            Cache::invalidateByType('ratings');
+            Cache::invalidateByType('statistics');
+
+            // 2. ВАЖНО: Очищаем кэш топ-100 книг (все версии)
+            Cache::delete('top_rated_data_v2');
+            Cache::delete('top_rated_data_v3');
+            Cache::delete('top_rated_all_v3');
+
+            // 3. Очищаем кэш глобальной статистики рейтингов
+            Cache::delete('rating_stats_global');
+            Cache::delete('rating_stats_global_v2');
+
+            // 4. Очищаем все страницы топа в PageCache
+            if (class_exists('PageCache')) {
+                for ($i = 1; $i <= 20; $i++) {
+                    Cache::delete('page_top_rated_page_' . $i);
+                }
+                PageCache::invalidateUserPages($userIp);
+            }
+
+            my_log("Rating cache fully invalidated for book {$bookId}");
+            // =================================================
+
+            return $result;
+
+        } catch (Exception $e) {
+            my_log("Error in rateBook: " . $e->getMessage());
+            throw new Exception("Failed to rate book");
         }
-
-        my_log("Rating cache fully invalidated for book {$bookId}");
-        // =================================================
-
-        return $result;
-
-    } catch (Exception $e) {
-        my_log("Error in rateBook: " . $e->getMessage());
-        throw new Exception("Failed to rate book");
     }
-}
 
     /**
      * Добавить/удалить книгу в избранное (с инвалидацией кэша)
@@ -1054,53 +1151,90 @@ public function rateBook($bookId, $rating, $userIp, $csrfToken = null)
     /**
      * Получить книги по автору (для OPDS)
      */
-    public function getBooksByAuthor($author, $page = 1, $perPage = 25)
+    public function getBooksByAuthor($author, $page, $perPage, $filters = [])
     {
-        $offset = (int)(($page - 1) * $perPage);
-        $stmt = $this->executeQuery(
-            "SELECT * FROM books WHERE author = ? ORDER BY title LIMIT ? OFFSET ?",
-            [$author, $perPage, $offset]
-        );
-        return $stmt->fetchAll();
+        [$where, $params] = $this->buildFiltersWhere($filters);
+        $orderBy = $this->buildOrderBy($filters['sort'] ?? 'new');
+
+        $sql = "SELECT * FROM books
+            WHERE author = :author {$where}
+            {$orderBy}
+            LIMIT :limit OFFSET :offset";
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->bindValue(':author', $author);
+        foreach ($params as $key => $val) {
+            $stmt->bindValue($key, $val);
+        }
+        $stmt->bindValue(':limit', $perPage, \PDO::PARAM_INT);
+        $stmt->bindValue(':offset', ($page - 1) * $perPage, \PDO::PARAM_INT);
+        $stmt->execute();
+
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC);
     }
 
     /**
      * Получить количество книг по автору
      */
-    public function getBooksCountByAuthor($author)
+    public function getBooksCountByAuthor($author, $filters = [])
     {
-        $stmt = $this->executeQuery(
-            "SELECT COUNT(*) as count FROM books WHERE author = ?",
-            [$author]
-        );
-        $result = $stmt->fetch();
-        return $result['count'] ?? 0;
+        [$where, $params] = $this->buildFiltersWhere($filters);
+
+        $sql = "SELECT COUNT(*) FROM books WHERE author = :author {$where}";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->bindValue(':author', $author);
+        foreach ($params as $key => $val) {
+            $stmt->bindValue($key, $val);
+        }
+        $stmt->execute();
+
+        return (int) $stmt->fetchColumn();
     }
 
     /**
      * Получить книги по жанру
      */
-    public function getBooksByGenre($genre, $page = 1, $perPage = 25)
+    public function getBooksByGenre($genre, $page, $perPage, $filters = [])
     {
-        $offset = (int)(($page - 1) * $perPage);
-        $stmt = $this->executeQuery(
-            "SELECT * FROM books WHERE genre = ? ORDER BY title LIMIT ? OFFSET ?",
-            [$genre, $perPage, $offset]
-        );
-        return $stmt->fetchAll();
+        [$where, $params] = $this->buildFiltersWhere($filters, 'b');
+        $orderBy = $this->buildOrderBy($filters['sort'] ?? 'new');
+
+        // Убираем лишний пробел в {$where}
+        $sql = "SELECT b.* FROM books b
+            WHERE b.genre = :genre {$where}
+            {$orderBy}
+            LIMIT :limit OFFSET :offset";
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->bindValue(':genre', $genre);
+        foreach ($params as $key => $val) {
+            $stmt->bindValue($key, $val);
+        }
+        $stmt->bindValue(':limit', $perPage, \PDO::PARAM_INT);
+        $stmt->bindValue(':offset', ($page - 1) * $perPage, \PDO::PARAM_INT);
+        $stmt->execute();
+
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC);
     }
 
     /**
      * Получить количество книг по жанру
      */
-    public function getBooksCountByGenre($genre)
+    public function getBooksCountByGenre($genre, $filters = [])
     {
-        $stmt = $this->executeQuery(
-            "SELECT COUNT(*) as count FROM books WHERE genre = ?",
-            [$genre]
-        );
-        $result = $stmt->fetch();
-        return $result['count'] ?? 0;
+        [$where, $params] = $this->buildFiltersWhere($filters, 'b');
+
+        // Убираем лишний пробел в {$where}
+        $sql = "SELECT COUNT(*) FROM books b
+            WHERE b.genre = :genre{$where}";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->bindValue(':genre', $genre);
+        foreach ($params as $key => $val) {
+            $stmt->bindValue($key, $val);
+        }
+        $stmt->execute();
+
+        return (int) $stmt->fetchColumn();
     }
 
 
@@ -1133,181 +1267,195 @@ public function rateBook($bookId, $rating, $userIp, $csrfToken = null)
     /**
      * Получить книги по серии (для OPDS)
      */
-    public function getBooksBySeries($series, $page = 1, $perPage = 25)
+    public function getBooksBySeries($series, $page, $perPage, $filters = [])
     {
-        $offset = (int)(($page - 1) * $perPage);
+        [$where, $params] = $this->buildFiltersWhere($filters);
+        $orderBy = $this->buildOrderBy($filters['sort'] ?? 'new');
 
-        $sql = "SELECT * FROM books 
-                WHERE series = ? 
-                ORDER BY series_number, title 
-                LIMIT ? OFFSET ?";
+        $sql = "SELECT * FROM books
+            WHERE series = :series {$where}
+            {$orderBy}
+            LIMIT :limit OFFSET :offset";
 
-        $stmt = $this->executeQuery($sql, [$series, $perPage, $offset]);
-        return $stmt->fetchAll();
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->bindValue(':series', $series);
+        foreach ($params as $key => $val) {
+            $stmt->bindValue($key, $val);
+        }
+        $stmt->bindValue(':limit', $perPage, \PDO::PARAM_INT);
+        $stmt->bindValue(':offset', ($page - 1) * $perPage, \PDO::PARAM_INT);
+        $stmt->execute();
+
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC);
     }
 
     /**
      * Получить количество книг по серии
      */
-    public function getBooksCountBySeries($series)
+    public function getBooksCountBySeries($series, $filters = [])
     {
-        $stmt = $this->executeQuery(
-            "SELECT COUNT(*) as count FROM books WHERE series = ?",
-            [$series]
-        );
-        $result = $stmt->fetch();
-        return $result['count'] ?? 0;
+        [$where, $params] = $this->buildFiltersWhere($filters);
+
+        $sql = "SELECT COUNT(*) FROM books WHERE series = :series {$where}";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->bindValue(':series', $series);
+        foreach ($params as $key => $val) {
+            $stmt->bindValue($key, $val);
+        }
+        $stmt->execute();
+
+        return (int) $stmt->fetchColumn();
     }
 
-/**
- * Инвалидировать кэш рейтингов для конкретной книги
- * Удаляет все батч-ключи, которые могут содержать эту книгу
- */
-private function invalidateRatingCache($bookId)
-{
-    $bookId = (int)$bookId;
+    /**
+     * Инвалидировать кэш рейтингов для конкретной книги
+     * Удаляет все батч-ключи, которые могут содержать эту книгу
+     */
+    private function invalidateRatingCache($bookId)
+    {
+        $bookId = (int)$bookId;
 
-    // 1. Инвалидируем конкретный рейтинг книги
-    Cache::delete('book_rating_' . $bookId);
-    Cache::invalidateByType('ratings');
+        // 1. Инвалидируем конкретный рейтинг книги
+        Cache::delete('book_rating_' . $bookId);
+        Cache::invalidateByType('ratings');
 
-    // 2. Удаляем все батч-ключи, которые могут содержать эту книгу
-    //    Для APCu это можно сделать только перебором ключей
-    if (function_exists('apcu_cache_info') && Config::isUseApcu()) {
-        $this->invalidateRatingBatches($bookId);
+        // 2. Удаляем все батч-ключи, которые могут содержать эту книгу
+        //    Для APCu это можно сделать только перебором ключей
+        if (function_exists('apcu_cache_info') && Config::isUseApcu()) {
+            $this->invalidateRatingBatches($bookId);
+        }
+
+        // 3. Инвалидируем статистику (там тоже есть рейтинги)
+        Cache::invalidateByType('statistics');
     }
 
-    // 3. Инвалидируем статистику (там тоже есть рейтинги)
-    Cache::invalidateByType('statistics');
-}
+    /**
+     * Удалить все батч-ключи рейтингов из APCu
+     */
+    private function invalidateRatingBatches($bookId)
+    {
+        try {
+            $info = apcu_cache_info(true);
+            if (!isset($info['cache_list'])) {
+                return;
+            }
 
-/**
- * Удалить все батч-ключи рейтингов из APCu
- */
-private function invalidateRatingBatches($bookId)
-{
-    try {
-        $info = apcu_cache_info(true);
-        if (!isset($info['cache_list'])) {
+            $deletedCount = 0;
+            foreach ($info['cache_list'] as $entry) {
+                $key = $entry['key'];
+                // Ищем ключи, начинающиеся с 'ratings_batch_'
+                if (strpos($key, 'ratings_batch_') === 0) {
+                    // Пробуем удалить ключ
+                    if (apcu_delete($key)) {
+                        $deletedCount++;
+                    }
+                }
+            }
+
+            if ($deletedCount > 0 && Config::isDevelopment()) {
+                my_log("Invalidated {$deletedCount} rating batch keys for book {$bookId}");
+            }
+
+        } catch (Exception $e) {
+            my_log("Error invalidating rating batches: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Альтернативный метод: хранить список батч-ключей и удалять их
+     * Более эффективный, требует дополнительного хранения
+     */
+    private function invalidateRatingBatchesByIndex($bookId)
+    {
+        // Сохраняем все созданные батч-ключи в специальный индекс
+        $indexKey = 'ratings_batches_index';
+        $batches = Cache::get($indexKey, 'statistics');
+
+        if (is_array($batches) && !empty($batches)) {
+            foreach ($batches as $batchKey) {
+                Cache::delete($batchKey);
+            }
+            Cache::delete($indexKey);
+            my_log("Invalidated all rating batches via index");
+        }
+
+        // Также инвалидируем по типу как fallback
+        Cache::invalidateByType('statistics');
+    }
+
+    /**
+     * Сохранить батч-ключ в индекс (вызывать при создании нового батча)
+     */
+    private function indexRatingBatchKey($batchKey)
+    {
+        if (!Config::isCacheEnabled()) {
             return;
         }
 
-        $deletedCount = 0;
-        foreach ($info['cache_list'] as $entry) {
-            $key = $entry['key'];
-            // Ищем ключи, начинающиеся с 'ratings_batch_'
-            if (strpos($key, 'ratings_batch_') === 0) {
-                // Пробуем удалить ключ
-                if (apcu_delete($key)) {
-                    $deletedCount++;
-                }
-            }
+        $indexKey = 'ratings_batches_index';
+        $batches = Cache::get($indexKey, 'statistics');
+
+        if (!is_array($batches)) {
+            $batches = [];
         }
 
-        if ($deletedCount > 0 && Config::isDevelopment()) {
-            my_log("Invalidated {$deletedCount} rating batch keys for book {$bookId}");
+        // Ограничиваем размер индекса (последние 1000 батчей)
+        if (count($batches) > 1000) {
+            $batches = array_slice($batches, -500);
         }
 
-    } catch (Exception $e) {
-        my_log("Error invalidating rating batches: " . $e->getMessage());
-    }
-}
-
-/**
- * Альтернативный метод: хранить список батч-ключей и удалять их
- * Более эффективный, требует дополнительного хранения
- */
-private function invalidateRatingBatchesByIndex($bookId)
-{
-    // Сохраняем все созданные батч-ключи в специальный индекс
-    $indexKey = 'ratings_batches_index';
-    $batches = Cache::get($indexKey, 'statistics');
-
-    if (is_array($batches) && !empty($batches)) {
-        foreach ($batches as $batchKey) {
-            Cache::delete($batchKey);
+        if (!in_array($batchKey, $batches)) {
+            $batches[] = $batchKey;
+            Cache::set($indexKey, $batches, 'statistics', 86400); // Храним сутки
         }
-        Cache::delete($indexKey);
-        my_log("Invalidated all rating batches via index");
     }
 
-    // Также инвалидируем по типу как fallback
-    Cache::invalidateByType('statistics');
-}
 
-/**
- * Сохранить батч-ключ в индекс (вызывать при создании нового батча)
- */
-private function indexRatingBatchKey($batchKey)
-{
-    if (!Config::isCacheEnabled()) {
-        return;
-    }
+    /**
+     * Получить топ авторов (оптимизировано с LIMIT)
+     */
+    public function getTopAuthors($limit = 20)
+    {
+        $cacheKey = 'top_authors_v3_' . $limit;
 
-    $indexKey = 'ratings_batches_index';
-    $batches = Cache::get($indexKey, 'statistics');
+        $cached = Cache::get($cacheKey, 'statistics');
+        if ($cached !== null) {
+            return $cached;
+        }
 
-    if (!is_array($batches)) {
-        $batches = [];
-    }
-
-    // Ограничиваем размер индекса (последние 1000 батчей)
-    if (count($batches) > 1000) {
-        $batches = array_slice($batches, -500);
-    }
-
-    if (!in_array($batchKey, $batches)) {
-        $batches[] = $batchKey;
-        Cache::set($indexKey, $batches, 'statistics', 86400); // Храним сутки
-    }
-}
-
-
-/**
- * Получить топ авторов (оптимизировано с LIMIT)
- */
-public function getTopAuthors($limit = 20)
-{
-    $cacheKey = 'top_authors_v3_' . $limit;
-
-    $cached = Cache::get($cacheKey, 'statistics');
-    if ($cached !== null) {
-        return $cached;
-    }
-
-    // Универсальный SQL без USE INDEX (работает и в MySQL, и в SQLite)
-    $sql = "SELECT author, COUNT(*) as count
+        // Универсальный SQL без USE INDEX (работает и в MySQL, и в SQLite)
+        $sql = "SELECT author, COUNT(*) as count
             FROM books
             WHERE author IS NOT NULL AND author != ''
             GROUP BY author
             ORDER BY count DESC, author ASC
             LIMIT ?";
 
-    $stmt = $this->executeQuery($sql, [$limit]);
-    $result = $stmt->fetchAll();
+        $stmt = $this->executeQuery($sql, [$limit]);
+        $result = $stmt->fetchAll();
 
-    Cache::set($cacheKey, $result, 'statistics', 3600);
+        Cache::set($cacheKey, $result, 'statistics', 3600);
 
-    return $result;
-}
-
-/**
- * Получить список жанров с количеством книг (оптимизировано с LIMIT)
- */
-public function getGenresWithCount($limit = 50)
-{
-    $cacheKey = 'genres_with_count_v3_' . $limit;
-
-    $cached = Cache::get($cacheKey, 'statistics');
-    if ($cached !== null) {
-        $this->cacheHits++;
-        return $cached;
+        return $result;
     }
-    $this->cacheMisses++;
 
-    try {
-        // Универсальный SQL без USE INDEX
-        $sql = "SELECT
+    /**
+     * Получить список жанров с количеством книг (оптимизировано с LIMIT)
+     */
+    public function getGenresWithCount($limit = 50)
+    {
+        $cacheKey = 'genres_with_count_v3_' . $limit;
+
+        $cached = Cache::get($cacheKey, 'statistics');
+        if ($cached !== null) {
+            $this->cacheHits++;
+            return $cached;
+        }
+        $this->cacheMisses++;
+
+        try {
+            // Универсальный SQL без USE INDEX
+            $sql = "SELECT
                     genre,
                     COUNT(*) as count
                 FROM books
@@ -1316,22 +1464,91 @@ public function getGenresWithCount($limit = 50)
                 ORDER BY count DESC, genre ASC
                 LIMIT ?";
 
-        $stmt = $this->executeQuery($sql, [$limit]);
-        $results = $stmt->fetchAll();
+            $stmt = $this->executeQuery($sql, [$limit]);
+            $results = $stmt->fetchAll();
 
-        // Добавляем читаемые названия жанров
-        foreach ($results as &$genre) {
-            $genre['readable_name'] = $this->getReadableGenre($genre['genre']);
+            // Добавляем читаемые названия жанров
+            foreach ($results as &$genre) {
+                $genre['readable_name'] = $this->getReadableGenre($genre['genre']);
+            }
+
+            Cache::set($cacheKey, $results, 'statistics', 3600);
+
+            return $results;
+
+        } catch (Exception $e) {
+            my_log("Error getting genres with count: " . $e->getMessage());
+            return [];
+        }
+    }
+
+    public function getDistinctLanguages()
+    {
+        $stmt = $this->pdo->query(
+            "SELECT DISTINCT language
+         FROM books
+         WHERE language IS NOT NULL AND language != ''
+         ORDER BY language"
+        );
+        return $stmt->fetchAll(\PDO::FETCH_COLUMN);
+    }
+
+    public function getDistinctFormats()
+    {
+        $stmt = $this->pdo->query(
+            "SELECT DISTINCT file_type
+         FROM books
+         WHERE file_type IS NOT NULL AND file_type != ''
+         ORDER BY file_type"
+        );
+        return $stmt->fetchAll(\PDO::FETCH_COLUMN);
+    }
+
+    /**
+     * Построить WHERE-условия для фильтров.
+     *
+     * @param array $filters
+     * @param string $alias Алиас таблицы (например 'b' для books)
+     * @return array [string $whereSql, array $params]
+     */
+    private function buildFiltersWhere($filters, $alias = '')
+    {
+        $prefix = $alias ? $alias . '.' : '';
+        $conditions = [];
+        $params = [];
+
+        if (!empty($filters['lang'])) {
+            $conditions[] = "{$prefix}language = :f_lang";
+            $params[':f_lang'] = $filters['lang'];
         }
 
-        Cache::set($cacheKey, $results, 'statistics', 3600);
+        if (!empty($filters['format'])) {
+            $conditions[] = "{$prefix}file_type = :f_format";
+            $params[':f_format'] = $filters['format'];
+        }
 
-        return $results;
+        if (empty($conditions)) {
+            return ['', []];
+        }
 
-    } catch (Exception $e) {
-        my_log("Error getting genres with count: " . $e->getMessage());
-        return [];
+        // ВАЖНО: добавляем пробел перед AND, чтобы не было "ANDAND"
+        $sql = ' AND ' . implode(' AND ', $conditions);
+        return [$sql, $params];
     }
-}
+
+    /**
+     * Построить ORDER BY с защитой от инъекций.
+     */
+    private function buildOrderBy($sort)
+    {
+        $allowed = [
+            'new'    => 'added_date DESC, id DESC',
+            'title'  => 'title ASC, added_date DESC',
+            'author' => 'author ASC, title ASC',
+        ];
+
+        $clause = $allowed[$sort] ?? $allowed['new'];
+        return 'ORDER BY ' . $clause;
+    }
 
 }

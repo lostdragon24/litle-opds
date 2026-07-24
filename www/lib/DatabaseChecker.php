@@ -125,7 +125,7 @@ class DatabaseChecker
             $result['tables_found'] = $tables;
 
             // Проверяем наличие необходимых таблиц
-            $requiredTables = ['books', 'book_ratings', 'book_favorites', 'archives'];
+            $requiredTables = ['books', 'book_ratings', 'book_favorites', 'archives', 'bookmarks', 'reading_history', 'bookmark_tags', 'bookmarks_fts', 'bookmarks_fts_config', 'bookmarks_fts_data', 'bookmarks_fts_docsize', 'bookmarks_fts_idx'];
             $existingTables = array_intersect($requiredTables, $tables);
 
             $result['tables_exist'] = in_array('books', $tables) && !empty($existingTables);
@@ -208,7 +208,7 @@ class DatabaseChecker
             $result['tables_found'] = $tables;
 
             // Проверяем наличие необходимых таблиц
-            $requiredTables = ['books', 'book_ratings', 'book_favorites', 'archives'];
+            $requiredTables = ['books', 'book_ratings', 'book_favorites', 'archives', 'bookmarks', 'reading_history', 'bookmark_tags', 'bookmarks_fts', 'bookmarks_fts_config', 'bookmarks_fts_data', 'bookmarks_fts_docsize', 'bookmarks_fts_idx'];
             $existingTables = array_intersect($requiredTables, $tables);
 
             $result['tables_exist'] = in_array('books', $tables) && !empty($existingTables);

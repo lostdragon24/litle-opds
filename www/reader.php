@@ -110,6 +110,7 @@ require 'templates/header.php';
         <?php endif; ?>
     </div>
 
+
     <!-- Нижняя панель управления -->
     <div class="reader-controls">
         <div class="container-fluid">
@@ -143,6 +144,16 @@ require 'templates/header.php';
                         <?php echo __('read_book'); ?>
                     </span>
                     <div class="btn-group">
+
+
+                        <!-- Кнопка открытия панели (добавьте в .reader-controls) -->
+    <button class="btn btn-outline-info annotations-toggle-btn"
+            onclick="toggleAnnotationsPanel()"
+            title="Заметки и цитаты">
+        <i class="fas fa-bookmark"></i>
+        <span class="badge bg-danger annotation-badge" id="annotationBadge" style="display:none;">0</span>
+    </button>
+
                         <button class="btn btn-outline-secondary" onclick="toggleTheme()" title="<?php echo __('reader_toggle_theme'); ?>">
                             <i class="fas fa-moon"></i>
                         </button>
@@ -160,6 +171,14 @@ require 'templates/header.php';
             </div>
         </div>
     </div>
+
+
+
+
+
+
+
+
 </div>
 
 <!-- Панель настроек (скрытая) -->
@@ -198,6 +217,57 @@ require 'templates/header.php';
         </div>
     </div>
 </div>
+
+
+
+<!-- Боковая панель заметок (ПРАВИЛЬНОЕ РАСПОЛОЖЕНИЕ) -->
+    <div class="annotations-panel" id="annotationsPanel" style="display: none;">
+        <div class="panel-header">
+            <h6><i class="fas fa-bookmark me-2"></i>Заметки и цитаты</h6>
+            <button class="btn-close-panel" onclick="toggleAnnotationsPanel()">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+
+        <div class="panel-search">
+            <input type="text" id="searchAnnotations"
+                   placeholder="Поиск по заметкам..."
+                   class="form-control form-control-sm">
+        </div>
+
+        <div class="panel-filters">
+            <select id="filterType" class="form-select form-select-sm">
+                <option value="all">Все</option>
+                <option value="quote">💬 Цитаты</option>
+                <option value="note">📝 Заметки</option>
+                <option value="highlight">🖍 Подсветки</option>
+                <option value="bookmark">🔖 Закладки</option>
+            </select>
+        </div>
+
+        <div class="annotations-list" id="annotationsList">
+            <div class="text-center text-muted py-4">
+                <i class="fas fa-spinner fa-spin"></i> Загрузка...
+            </div>
+        </div>
+
+        <div class="panel-footer">
+            <div class="annotation-stats">
+                <span class="badge bg-warning" title="Цитаты">
+                    <i class="fas fa-quote-left"></i> <span id="quotesCount">0</span>
+                </span>
+                <span class="badge bg-info" title="Заметки">
+                    <i class="fas fa-sticky-note"></i> <span id="notesCount">0</span>
+                </span>
+                <span class="badge bg-success" title="Подсветки">
+                    <i class="fas fa-highlighter"></i> <span id="highlightsCount">0</span>
+                </span>
+            </div>
+            <button class="btn btn-sm btn-outline-primary w-100 mt-2" onclick="exportAnnotations()">
+                <i class="fas fa-download me-1"></i> Экспорт
+            </button>
+        </div>
+    </div>
 
 <script>
 // ============================================
@@ -402,6 +472,41 @@ window.addEventListener('message', function(event) {
     if (event.data.type === 'readingActivity') {
         updateActivityStatus(event.data.active, event.data.page);
     }
+
+    if (event.data.type === 'createAnnotation') {
+    console.log('Creating annotation:', event.data);
+
+    const formData = new FormData();
+    formData.append('action', 'create_annotation');
+    formData.append('book_id', event.data.bookId || <?php echo $bookId; ?>);
+    formData.append('type', event.data.annotationType);
+    formData.append('page_number', event.data.position?.page || 1);
+    formData.append('percentage', event.data.position?.percentage || 0);
+    formData.append('cfi_range', event.data.position?.cfi || '');
+    formData.append('selected_text', event.data.selectedText || '');
+    formData.append('note', event.data.note || '');
+    formData.append('color', event.data.color || 'yellow');
+    formData.append('fingerprint', getFingerprint());
+
+    fetch('./api/bookmarks.php', {
+        method: 'POST',
+        body: formData
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            // Обновляем панель если открыта
+            if (annotationsPanelOpen) {
+                loadAnnotations();
+            }
+        } else {
+            console.error('Failed to create annotation:', data.message);
+        }
+    })
+    .catch(err => console.error('Error:', err));
+}
+
+
 });
 
 // ============================================
@@ -721,6 +826,219 @@ window.addEventListener('load', function() {
     }, 5000);
 });
 
+
+// боковая панель
+
+// ===== ПАНЕЛЬ АННОТАЦИЙ =====
+let annotationsPanelOpen = false;
+
+function toggleAnnotationsPanel() {
+    console.log('toggleAnnotationsPanel called');
+
+    const panel = document.getElementById('annotationsPanel');
+    if (!panel) {
+        console.error('Annotations panel not found!');
+        return;
+    }
+
+    annotationsPanelOpen = !annotationsPanelOpen;
+    console.log('Panel state:', annotationsPanelOpen ? 'open' : 'closed');
+
+    if (annotationsPanelOpen) {
+        panel.classList.add('open');
+        panel.style.display = 'flex'; // Явно показываем
+        loadAnnotations();
+    } else {
+        panel.classList.remove('open');
+        setTimeout(() => {
+            panel.style.display = 'none';
+        }, 300);
+    }
+}
+
+// Загрузка аннотаций
+async function loadAnnotations() {
+    const list = document.getElementById('annotationsList');
+    const bookId = <?php echo $bookId; ?>;
+    const filterType = document.getElementById('filterType').value;
+
+    list.innerHTML = '<div class="text-center text-muted py-4"><i class="fas fa-spinner fa-spin"></i> Загрузка...</div>';
+
+    try {
+        const response = await fetch(`./api/bookmarks.php`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+                action: 'get_annotations',
+                book_id: bookId,
+                type: filterType,
+                fingerprint: getFingerprint()
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success && data.annotations) {
+            renderAnnotations(data.annotations);
+            updateAnnotationCounts(data.annotations);
+        } else {
+            list.innerHTML = '<div class="text-center text-muted py-4">Нет заметок</div>';
+        }
+    } catch (error) {
+        console.error('Error loading annotations:', error);
+        list.innerHTML = '<div class="text-center text-danger py-4">Ошибка загрузки</div>';
+    }
+}
+
+// Отрисовка аннотаций
+function renderAnnotations(annotations) {
+    const list = document.getElementById('annotationsList');
+
+    if (annotations.length === 0) {
+        list.innerHTML = `
+            <div class="text-center text-muted py-5">
+                <i class="fas fa-bookmark fa-3x mb-3"></i>
+                <p>Нет заметок для этой книги</p>
+                <small>Выделите текст и добавьте заметку</small>
+            </div>
+        `;
+        return;
+    }
+
+    const icons = {
+        'quote': 'fa-quote-left',
+        'note': 'fa-sticky-note',
+        'highlight': 'fa-highlighter',
+        'bookmark': 'fa-bookmark'
+    };
+
+    list.innerHTML = annotations.map(ann => `
+        <div class="annotation-item type-${ann.type}"
+             data-id="${ann.id}"
+             onclick="goToAnnotation(${ann.page_number})">
+            <div class="annotation-text">
+                <i class="fas ${icons[ann.type]} me-1"></i>
+                ${ann.selected_text ?
+                    `"${ann.selected_text.substring(0, 100)}${ann.selected_text.length > 100 ? '...' : ''}"` :
+                    (ann.note || 'Без текста')}
+            </div>
+            ${ann.note && ann.type !== 'note' ?
+                `<div class="annotation-note small text-muted mt-1">${ann.note}</div>` : ''}
+            <div class="annotation-meta">
+                <span>
+                    <i class="fas fa-file-alt me-1"></i>
+                    Стр. ${ann.page_number} (${Math.round(ann.percentage)}%)
+                </span>
+                <div class="annotation-actions">
+                    <button class="btn btn-sm btn-outline-danger"
+                            onclick="event.stopPropagation(); deleteAnnotation(${ann.id})">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+// Обновление счётчиков
+function updateAnnotationCounts(annotations) {
+    const counts = {
+        quote: annotations.filter(a => a.type === 'quote').length,
+        note: annotations.filter(a => a.type === 'note').length,
+        highlight: annotations.filter(a => a.type === 'highlight').length
+    };
+
+    document.getElementById('quotesCount').textContent = counts.quote;
+    document.getElementById('notesCount').textContent = counts.note;
+    document.getElementById('highlightsCount').textContent = counts.highlight;
+
+    // Обновляем бейдж
+    const total = counts.quote + counts.note + counts.highlight;
+    const badge = document.getElementById('annotationBadge');
+    if (total > 0) {
+        badge.style.display = 'flex';
+        badge.textContent = total;
+    } else {
+        badge.style.display = 'none';
+    }
+}
+
+// Переход к аннотации
+function goToAnnotation(page) {
+    const readerFrame = document.getElementById('readerFrame');
+    if (readerFrame && readerFrame.contentWindow) {
+        readerFrame.contentWindow.postMessage({
+            type: 'navigate',
+            page: page
+        }, '*');
+    }
+
+    // Закрываем панель на мобильных
+    if (window.innerWidth < 768) {
+        toggleAnnotationsPanel();
+    }
+}
+
+// Удаление аннотации
+async function deleteAnnotation(id) {
+    if (!confirm('Удалить эту заметку?')) return;
+
+    try {
+        const response = await fetch('./api/bookmarks.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+                action: 'delete',
+                bookmark_id: id,
+                fingerprint: getFingerprint()
+            })
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            showNotification('Заметка удалена', 'info');
+            loadAnnotations();
+        }
+    } catch (error) {
+        console.error('Error deleting annotation:', error);
+    }
+}
+
+// Экспорт аннотаций
+function exportAnnotations() {
+    const bookId = <?php echo $bookId; ?>;
+    window.open(`./api/bookmarks.php?action=export_annotations&book_id=${bookId}&format=markdown`, '_blank');
+}
+
+// Поиск по аннотациям
+document.getElementById('searchAnnotations')?.addEventListener('input', debounce(function(e) {
+    const query = e.target.value.toLowerCase();
+    const items = document.querySelectorAll('.annotation-item');
+
+    items.forEach(item => {
+        const text = item.textContent.toLowerCase();
+        item.style.display = text.includes(query) ? 'block' : 'none';
+    });
+}, 300));
+
+// Фильтр по типу
+document.getElementById('filterType')?.addEventListener('change', function() {
+    loadAnnotations();
+});
+
+// Debounce функция
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        clearTimeout(timeout);
+        timeout = setTimeout(() => func.apply(this, args), wait);
+    };
+}
+
+
+
+
+
 </script>
 
 <style>
@@ -804,7 +1122,7 @@ window.addEventListener('load', function() {
     }
 }
 
-/* Темная тема */
+/* Темная тема - основные элементы */
 body.dark-theme .reader-wrapper {
     background: #1a1a1a;
 }
@@ -848,30 +1166,264 @@ body.dark-theme .form-select option {
     background-color: #3d3d3d;
 }
 
+/* ===== ПАНЕЛЬ АННОТАЦИЙ - ИСПРАВЛЕННАЯ ===== */
+.annotations-panel {
+    position: fixed;
+    top: 0;
+    right: -420px; /* Ширина панели + отступ */
+    width: 400px;
+    height: 100vh;
+    background: #ffffff;
+    box-shadow: -4px 0 20px rgba(0,0,0,0.15);
+    z-index: 1070;
+    display: flex;
+    flex-direction: column;
+    transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border-left: 1px solid #dee2e6;
+    overflow: hidden;
+}
+
+.annotations-panel.open {
+    right: 0 !important; /* Важно: переопределяем !important */
+}
+
+/* Заголовок панели */
+.annotations-panel .panel-header {
+    padding: 16px 20px;
+    background: #2c3e50;
+    color: white;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+    border-bottom: 2px solid #34495e;
+}
+
+.annotations-panel .panel-header h6 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+/* Кнопка закрытия */
+.btn-close-panel {
+    background: rgba(255,255,255,0.1);
+    border: none;
+    color: white;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+}
+
+.btn-close-panel:hover {
+    background: rgba(255,255,255,0.2);
+}
+
+/* Поиск и фильтры */
+.panel-search {
+    padding: 12px 16px;
+    border-bottom: 1px solid #eee;
+    flex-shrink: 0;
+    background: #f8f9fa;
+}
+
+.panel-filters {
+    padding: 8px 16px 12px;
+    border-bottom: 1px solid #eee;
+    flex-shrink: 0;
+    background: #f8f9fa;
+}
+
+/* Список аннотаций */
+.annotations-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 16px;
+    background: #ffffff;
+}
+
+.annotations-list::-webkit-scrollbar {
+    width: 6px;
+}
+
+.annotations-list::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 3px;
+}
+
+.annotations-list::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 3px;
+}
+
+.annotations-list::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+}
+
+/* Элемент аннотации */
+.annotation-item {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+    border-left: 4px solid #6c757d;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+}
+
+.annotation-item:hover {
+    background: #e9ecef;
+    transform: translateX(4px);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+.annotation-item.type-quote { border-left-color: #ffc107; }
+.annotation-item.type-note { border-left-color: #17a2b8; }
+.annotation-item.type-highlight { border-left-color: #28a745; }
+.annotation-item.type-bookmark { border-left-color: #6c757d; }
+
+.annotation-item .annotation-text {
+    font-size: 0.9rem;
+    margin-bottom: 6px;
+    color: #333;
+    line-height: 1.5;
+    word-wrap: break-word;
+}
+
+.annotation-item .annotation-note {
+    font-size: 0.85rem;
+    color: #6c757d;
+    margin-top: 4px;
+    padding: 6px 10px;
+    background: rgba(0,0,0,0.03);
+    border-radius: 4px;
+    border-left: 2px solid #dee2e6;
+}
+
+.annotation-item .annotation-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 8px;
+    font-size: 0.75rem;
+    color: #6c757d;
+}
+
+.annotation-item .annotation-actions {
+    display: flex;
+    gap: 4px;
+}
+
+.annotation-item .annotation-actions button {
+    padding: 2px 8px;
+    font-size: 0.7rem;
+    border-radius: 4px;
+}
+
+/* Подвал панели */
+.panel-footer {
+    padding: 12px 16px;
+    border-top: 1px solid #eee;
+    background: #f8f9fa;
+    flex-shrink: 0;
+}
+
+.annotation-stats {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    margin-bottom: 8px;
+}
+
+.annotation-stats .badge {
+    font-size: 0.8rem;
+    padding: 6px 12px;
+}
+
+/* Кнопка открытия панели */
+.annotations-toggle-btn {
+    position: relative;
+    border-radius: 6px;
+    margin-right: 4px;
+    padding: 6px 12px;
+}
+
+.annotations-toggle-btn:hover {
+    transform: scale(1.05);
+}
+
+.annotation-badge {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    font-size: 0.6rem;
+    min-width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    padding: 0 5px;
+}
+
+/* ===== ТЕМНАЯ ТЕМА ===== */
+body.dark-theme .annotations-panel {
+    background: #1a1a1a;
+    color: #e0e0e0;
+    border-left-color: #404040;
+}
+
+body.dark-theme .panel-search,
+body.dark-theme .panel-filters,
+body.dark-theme .panel-footer {
+    border-color: #404040;
+    background: #2d2d2d;
+}
+
+body.dark-theme .annotations-list {
+    background: #1a1a1a;
+}
+
+body.dark-theme .annotation-item {
+    background: #2d2d2d;
+    color: #e0e0e0;
+}
+
+body.dark-theme .annotation-item:hover {
+    background: #3d3d3d;
+}
+
+body.dark-theme .annotation-item .annotation-text {
+    color: #e0e0e0;
+}
+
+body.dark-theme .annotation-item .annotation-note {
+    color: #b0b0b0;
+    background: rgba(255,255,255,0.05);
+}
+
+body.dark-theme .form-select,
+body.dark-theme .form-control {
+    background: #3d3d3d;
+    color: #e0e0e0;
+    border-color: #404040;
+}
+
+/* ===== АДАПТИВНОСТЬ ===== */
 @media (max-width: 768px) {
-    .reader-controls .btn-group {
-        margin: 5px 0;
+    .annotations-panel {
+        width: 100%;
+        right: -100%;
     }
 
-    .reader-controls .col-4 {
-        text-align: center !important;
-    }
-
-    .reader-controls .text-end {
-        text-align: center !important;
-    }
-
-    .settings-panel {
-        width: 90%;
-        right: 5%;
-        top: 60px;
-    }
-
-    .reader-navbar .navbar-brand {
-        font-size: 0.9rem;
-        max-width: 150px;
-        overflow: hidden;
-        text-overflow: ellipsis;
+    .annotations-panel.open {
+        right: 0;
     }
 }
 </style>

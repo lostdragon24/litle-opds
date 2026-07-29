@@ -1856,9 +1856,16 @@ return [
 'author_deduplicate_scan_Done' => 'Дайын!',
 'author_deduplicate_not_found' => 'Қайталанатын кітаптар табылмады!',
 'author_deduplicate_scan' => 'Сканерленуде',
+'author_deduplicate_merge_bath' => 'Біріктіру опциясын таңдаңыз',
+
+'stats_by_date' => 'Күні бойынша қосу',
+'date' => 'Күні',
+'count' => 'Санау',
+'stats_no_data_daily' => 'Күні бойынша деректер жоқ',
+'last_update' => 'Соңғы жаңарту:',
 
 'books' => 'books',
-'date' => 'Күні',
+
 
 'opds_sort_new' => 'Қосылған күні бойынша',
 'opds_sort_title' => 'Тақырыбы бойынша',

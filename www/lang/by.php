@@ -1859,9 +1859,16 @@ return [
 'author_deduplicate_scan_Done' => 'Гатова!',
 'author_deduplicate_not_found' => 'Дублікатаў не знойдзена!',
 'author_deduplicate_scan' => 'Сканіраванне',
+'author_deduplicate_merge_bath' => 'Выберыце варыянт для абяднання',
+
+
+'stats_by_date' => 'Даданне па дат',
+'date' => 'Дата',
+'count' => 'Колькасць',
+'stats_no_data_daily' => 'Няма дадзеных па дат',
+'last_update' => 'Апошняе абнаўленне:',
 
 'books' => 'кніг',
-'date' => 'Дата',
 
 
 'opds_sort_new' => 'Па даце дадання',

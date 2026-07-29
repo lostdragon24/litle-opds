@@ -30,6 +30,8 @@ if ($cachedData !== null) {
     $topRatedBooks = $cachedData['topRatedBooks'];
     $popularFavorites = $cachedData['popularFavorites'];
     $fileTypes = $cachedData['fileTypes'];
+
+
 } else {
     // ========== ОСНОВНОЙ ЗАПРОС – ВСЯ ОБЩАЯ СТАТИСТИКА ЗА РАЗ ==========
     if ($dbType === 'mysql') {
@@ -143,6 +145,21 @@ if ($cachedData !== null) {
     }
     $topRatedBooks = $db->getConnection()->query($sql)->fetchAll();
 
+    // ========== СТАТИСТИКА ПО ДАТАМ (книги по дням) ==========
+    if ($dbType === 'mysql') {
+        $sqlDaily = "SELECT DATE(added_date) AS added_date_only, COUNT(*) AS books_count
+                 FROM books
+                 GROUP BY added_date_only
+                 ORDER BY added_date_only DESC";
+    } else {
+        // SQLite
+        $sqlDaily = "SELECT date(added_date) AS added_date_only, COUNT(*) AS books_count
+                 FROM books
+                 GROUP BY added_date_only
+                 ORDER BY added_date_only DESC";
+    }
+    $dailyStats = $db->getConnection()->query($sqlDaily)->fetchAll();
+
     // ========== ТОП-10 ПОПУЛЯРНЫХ В ИЗБРАННОМ ==========
     if ($dbType === 'mysql') {
         $sql = "SELECT b.id, b.title, b.author, COUNT(f.id) as favorites_count
@@ -171,6 +188,7 @@ if ($cachedData !== null) {
         'topRatedBooks'     => $topRatedBooks,
         'popularFavorites'  => $popularFavorites,
         'fileTypes'         => $fileTypes,
+        'dailyStats'        => $dailyStats,
     ];
     Cache::set($cacheKey, $cachedData, 'statistics', 3600);
 }
@@ -697,10 +715,48 @@ foreach ($fileTypes as $fileType):
                         </div>
                     </div>
                     
+
+                    <div class="mt-4">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                         📅 <?php echo __('stats_by_date'); ?>
+                    </h6>
+<div class="d-grid gap-2">
+    <?php if (!empty($dailyStats)): ?>
+        <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+            <table class="table table-sm table-striped mb-0">
+                <thead>
+                    <tr>
+                        <th scope="col"><?php echo __('date'); ?></th>
+                        <th scope="col" class="text-end"><?php echo __('count'); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($dailyStats as $row): ?>
+                        <tr>
+                            <td><?php echo htmlspecialchars($row['added_date_only']); ?></td>
+                            <td class="text-end">
+                                <span class="badge bg-primary"><?php echo number_format($row['books_count'], 0, '', ' '); ?></span>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    <?php else: ?>
+        <p class="text-muted small mb-0"><?php echo __('stats_no_data_daily'); ?></p>
+    <?php endif; ?>
+</div>
+</div>
+
+
+
+
+
                     <div class="mt-4">
                         <h6 class="font-weight-bold text-dark mb-2">
                             🚀 <?php echo __('stats_quick_actions'); ?>
                         </h6>
+
                         <div class="d-grid gap-2">
                             <a href="favorites.php" class="btn btn-outline-danger">
                                 <i class="fas fa-heart me-2"></i><?php echo __('my_favorites'); ?>
@@ -715,10 +771,26 @@ foreach ($fileTypes as $fileType):
                             <?php endif; ?>
                         </div>
                     </div>
+
+
+
+
+
                 </div>
             </div>
+
+
+
+
+
+
         </div>
     </div>
+
+
+
+
+
 
     <!-- Время генерации (информация внизу) -->
     <div class="row mt-3">

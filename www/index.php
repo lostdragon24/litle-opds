@@ -106,7 +106,7 @@ require 'templates/header.php';
 
         <div class="card search-form shadow-sm">
             <div class="card-body">
-                <h5 class="card-title"><?php echo __('search'); ?></h5>
+                <h5 class="card-title">🔎 <?php echo __('search'); ?></h5>
                 <form method="get" action="index.php">
                     <div class="mb-3">
                         <input type="text" class="form-control" name="q" 
@@ -139,7 +139,7 @@ require 'templates/header.php';
 
         <div class="card mt-3 shadow-sm">
             <div class="card-body">
-                <h5 class="card-title"><?php echo __('quick_search'); ?></h5>
+                <h5 class="card-title">🔍️ <?php echo __('quick_search'); ?></h5>
                 <ul class="list-unstyled">
                     <li><a href="index.php?field=author&q="><?php echo __('by_authors'); ?></a></li>
                     <li><a href="index.php?field=genre&q="><?php echo __('by_genres'); ?></a></li>
@@ -151,7 +151,7 @@ require 'templates/header.php';
 
         <div class="card mt-3 shadow-sm">
             <div class="card-body">
-                <h5 class="card-title"><?php echo __('stats'); ?></h5>
+                <h5 class="card-title">📊 <?php echo __('stats'); ?></h5>
             
 	<?php
         // Кэшируем статистику на 1 час
@@ -177,7 +177,56 @@ if (isset($stats['total_books'])): ?>
 
             </div>
         </div>
+
+
+
+
+
+
+
+            <div class="card mt-3 shadow-sm">
+            <div class="card-body">
+                <h5 class="card-title"> 📅 <?php echo __('last_update'); ?> </h5>
+
+	<?php echo date('d.m.Y', strtotime($stats['last_update'] ?? date('Y-m-d'))) ?>
+
+            </div>
+        </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     <div class="col-md-9">
         <h2>

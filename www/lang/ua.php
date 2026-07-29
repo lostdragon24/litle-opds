@@ -1719,8 +1719,16 @@ return [
 'author_deduplicate_scan_Done' => 'Готово!',
 'author_deduplicate_not_found' => 'Дублікати не знайдено!',
 'author_deduplicate_scan' => 'Сканування',
-'books' => 'книг',
+'author_deduplicate_merge_bath' => 'Виберіть варіант для обєднання',
+
+
+'stats_by_date' => 'Додавання за датами',
 'date' => 'Дата',
+'count' => 'Кількість',
+'stats_no_data_daily' => 'Немає даних за датами',
+'last_update' => 'Останнє оновлення:',
+
+'books' => 'книг',
 
 
 'opds_sort_new' => 'За датою додавання',

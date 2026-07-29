@@ -2051,11 +2051,17 @@ return [
 'author_deduplicate_scan_Done' => 'Готово!',
 'author_deduplicate_not_found' => 'Дубликатов не найдено!',
 'author_deduplicate_scan' => 'Сканирование',
+'author_deduplicate_merge_bath' => 'Выберите вариант для объединения',
 
 
+'stats_by_date' => 'Добавление по датам',
+'date' => 'Дата',
+'count' => 'Количество',
+'stats_no_data_daily' => 'Нет данных по датам',
+'last_update' => 'Последнее обновление:',
 
 'books' => 'книг',
-'date' => 'Дата',
+
 
 
 'opds_sort_new'       => 'По дате добавления',
@@ -2065,6 +2071,9 @@ return [
 'opds_facet_language' => 'Язык',
 'opds_facet_format'   => 'Формат',
 'opds_facet_genre'    => 'Жанры',
+
+
+
 
 
 ];

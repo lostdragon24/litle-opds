@@ -25,8 +25,6 @@ try {
             $perPage = (int)($_GET['perPage'] ?? 50);
             $search = trim($_GET['search'] ?? '');
 
-            // Если поиск пустой — просто список
-            // Если поиск есть — ищем по ВСЕМ авторам
             $result = $deduplicator->getAllAuthorsList($page, $perPage, $search);
 
             echo json_encode([

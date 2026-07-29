@@ -969,7 +969,7 @@ class OpdsGenerator
 
         // Описание
         if ($book['description']) {
-            $description = substr($book['description'], 0, 5000);
+            $description = substr($book['description'], 0, 10000);
             $xml->writeElement('summary', htmlspecialchars($description));
             $xml->writeAttribute('type', 'text');
         }
@@ -1199,7 +1199,7 @@ class OpdsGenerator
         }
 
         // Получаем все жанры с количеством книг
-        $genres = $this->db->getGenresWithCount(10000);
+        $genres = $this->db->getGenresWithCount(1000);
 
         // Группируем по категориям
         $categories = GenreManager::getGenresByCategory();

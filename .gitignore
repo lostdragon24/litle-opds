@@ -75,3 +75,8 @@ www/templates/.header.php.kate-swp
 www/test_opds_lang.php
 www/test_save.php
 www/migrate_db.php
+*.ini
+*.php2
+*.php3
+*.php34
+www/admin/test.php

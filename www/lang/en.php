@@ -1570,10 +1570,16 @@ return [
 'author_deduplicate_scan_Done' => 'Done!',
 'author_deduplicate_not_found' => 'No duplicates found!',
 'author_deduplicate_scan' => 'Scanning',
+'author_deduplicate_merge_bath' => 'Select an option to merge',
 
+'stats_by_date' => 'Add by date',
+'date' => 'Date',
+'count' => 'Count',
+'stats_no_data_daily' => 'No data by date',
+'last_update' => 'Last updated:',
 
 'books' => 'books',
-'date' => 'Date',
+
 
 
 // =======================================================
